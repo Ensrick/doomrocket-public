@@ -54,7 +54,7 @@ Run both source mutations and the production contract:
 Analyze a runtime capture separately:
 
 ```powershell
-py -3 ./tools/analyze_warlock_ragdoll_log.py C:\path\to\console.log --expected-version 0.1.55-dev
+py -3 ./tools/analyze_warlock_ragdoll_log.py C:\path\to\console.log --expected-version 0.1.55-alpha
 ```
 
 `--expected-version` is mandatory for a release acceptance capture. It rejects

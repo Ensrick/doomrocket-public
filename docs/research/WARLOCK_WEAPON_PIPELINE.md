@@ -376,7 +376,7 @@ a failed command.
 
 After upload, verify a fresh `workshop_log.txt` success record/ManifestID for
 published item `3771657344`, verify the deployed Workshop folder hashes match
-`bundleV2`, and retain `friends_only` visibility. A successful uploader exit
+`bundleV2`, and retain `public` visibility. A successful uploader exit
 without a fresh log record and matching content is not publication evidence.
 
 ## Runtime acceptance

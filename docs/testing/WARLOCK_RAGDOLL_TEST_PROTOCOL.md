@@ -35,7 +35,7 @@ only the rigid launcher's internal mesh placement. Visual signoff and remote-cli
 5. Confirm the console contains the exact hardened candidate banner and record
    its Workshop manifest ID:
 
-       [doomrocket:LOAD] v0.1.55-dev
+       [doomrocket:LOAD] v0.1.55-alpha
 
    `[doomrocket:LOAD] v0.1.50-dev` identifies the original baseline.
    `[doomrocket:LOAD] v0.1.51-dev` identifies the known pre-monitor
@@ -129,7 +129,7 @@ recorded video remains the authoritative carrier-identity check.
 
 Analyze a captured console log with:
 
-    py -3 tools/analyze_warlock_ragdoll_log.py "C:\path\to\console.log" --expected-version 0.1.55-dev
+    py -3 tools/analyze_warlock_ragdoll_log.py "C:\path\to\console.log" --expected-version 0.1.55-alpha
 
 The analyzer must print `[ragdoll-log] OK`. `--expected-version` is mandatory
 for acceptance; omitting it is supported only for historical-log triage.

@@ -1,0 +1,82 @@
+name: Public-alpha bug report
+description: Report a reproducible problem in the public Warprocket Bombardier alpha.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for the public-alpha Workshop build. Use the development repository for the TEST build.
+  - type: input
+    id: mod_version
+    attributes:
+      label: Mod version
+      description: Copy the `[doomrocket:LOAD]` version from the console log.
+      placeholder: v0.1.55-alpha
+    validations:
+      required: true
+  - type: input
+    id: game_build
+    attributes:
+      label: Vermintide 2 build
+      description: Include the game build or patch shown in the log.
+    validations:
+      required: true
+  - type: dropdown
+    id: network_role
+    attributes:
+      label: Network role
+      options:
+        - Listen host
+        - Remote client
+        - Solo/offline
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Give the exact spawn, combat, death, or level sequence.
+      placeholder: |
+        1. Launch...
+        2. Spawn...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: upload
+    id: console_log
+    attributes:
+      label: Console log
+      description: Attach the complete, unedited console log. Raw .log files are accepted; .txt, .zip, and .gz are also allowed. Maximum size is 25 MB.
+    validations:
+      required: true
+      accept: ".log,.txt,.zip,.gz"
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Attach any continuous video or screenshots here. Do not paste only the final crash popup.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I restarted the game after the Workshop update and verified the exact `[doomrocket:LOAD] v0.1.55-alpha` version.
+          required: true
+        - label: Every player used this public-alpha build, and the TEST build was not enabled at the same time.
+          required: true

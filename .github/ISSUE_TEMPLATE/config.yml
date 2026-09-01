@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Development TEST bug reports
+    url: https://github.com/Ensrick/doomrocket-private/issues/new/choose
+    about: Report bugs from the experimental TEST Workshop build in the development repository.
