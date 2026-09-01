@@ -31,6 +31,7 @@ param(
     [string]$GameBundleDir = "C:\Program Files (x86)\Steam\steamapps\common\Warhammer Vermintide 2\bundle",
     [string]$UnpackerExe = "C:\Tools\vt2_bundle_unpacker\target\release\unpacker.exe",
     [string]$UnpackerDict = "C:\Users\danjo\source\repos\vt2_bundle_unpacker\dictionary.csv",
+    [switch]$UseVerifiedCache,
     [switch]$PayloadOnly
 )
 
@@ -82,15 +83,23 @@ $donors = @(
 foreach ($donor in $donors) {
     $dir = Join-Path $buildDir $donor.Key
     New-Item -ItemType Directory -Force $dir | Out-Null
-    $extractArgs = @("--dict", $UnpackerDict, "extract",
-        (Join-Path $GameBundleDir $donor.Bundle), $dir, "--flatten")
-    foreach ($include in $donor.Includes) {
-        $extractArgs += @("--include", $include)
+
+    if (-not $UseVerifiedCache) {
+        $bundlePath = Join-Path $GameBundleDir $donor.Bundle
+        if (-not (Test-Path -LiteralPath $bundlePath)) {
+            throw "native donor bundle is unavailable: $bundlePath. Restore the game data or rerun with -UseVerifiedCache only when the previously extracted donor files remain hash-valid."
+        }
+
+        $extractArgs = @("--dict", $UnpackerDict, "extract", $bundlePath, $dir, "--flatten")
+        foreach ($include in $donor.Includes) {
+            $extractArgs += @("--include", $include)
+        }
+        & $UnpackerExe @extractArgs 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "donor extraction command failed: $($donor.Key)"
+        }
     }
-    & $UnpackerExe @extractArgs 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "donor extraction command failed: $($donor.Key)"
-    }
+
     foreach ($file in $donor.Files) {
         $path = Join-Path $dir $file.Name
         if (-not (Test-Path -LiteralPath $path)) {
@@ -98,7 +107,8 @@ foreach ($donor in $donors) {
         }
         Assert-Sha256 $path $file.Sha256
     }
-    Write-Host "[splice] extracted and hash-verified donor $($donor.Key)"
+    $source = if ($UseVerifiedCache) { "cache" } else { "installed game" }
+    Write-Host "[splice] hash-verified donor $($donor.Key) from $source"
 }
 $ratlingPayload = Join-Path $buildDir "ratling\0488D08E3CE5CBC3.material"
 $skinPayload = Join-Path $buildDir "stormvermin\2CC5FCB51388A255.material"
