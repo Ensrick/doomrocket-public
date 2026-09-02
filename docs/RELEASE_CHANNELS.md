@@ -22,6 +22,15 @@ a lobby must use the same channel and exact version.
 
 ## Publication procedure
 
+From a clean, committed channel branch, prefer the guarded wrapper:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\Invoke-DoomrocketRelease.ps1 -Upload
+```
+
+Omit `-Upload` to build/splice/test without publishing, or use
+`-PreflightOnly` for a fast channel/metadata/clean-tree check.
+
 1. Work only in that channel's dedicated worktree.
 2. Confirm `itemV2.cfg` contains the channel's exact Workshop ID, public
    visibility, title, and preview image.
