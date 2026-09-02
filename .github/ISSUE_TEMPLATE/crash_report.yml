@@ -1,0 +1,75 @@
+name: Crash report
+description: Report a crash, assertion failure, or game-closing engine error with its complete log.
+title: "[Crash] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when Vermintide closes, freezes, or displays a crash/assertion dialog. Attach the log from the same session as the crash.
+  - type: input
+    id: loaded_banner
+    attributes:
+      label: Exact loaded build banner
+      description: Copy the `[doomrocket:LOAD]` line from the crash log. Enter `unknown` only if it is genuinely unavailable.
+      placeholder: "[doomrocket:LOAD] v0.1.55-alpha"
+    validations:
+      required: true
+  - type: input
+    id: crash_guid
+    attributes:
+      label: Crash GUID or Crashify link
+      description: Copy it from the crash dialog. Enter `none shown` if the game did not provide one.
+      placeholder: "crashify://00000000-0000-0000-0000-000000000000"
+    validations:
+      required: true
+  - type: dropdown
+    id: network_role
+    attributes:
+      label: Your network role
+      options:
+        - Host
+        - Remote client
+        - Solo or offline
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: What happened immediately before the crash?
+      description: Include the map or Keep, how the enemy was spawned, whether it was alive or dead, and the last action taken.
+      placeholder: |
+        1. Started...
+        2. Spawned...
+        3. Fired, killed, pushed, or toggled...
+        4. Game crashed when...
+    validations:
+      required: true
+  - type: upload
+    id: console_log
+    attributes:
+      label: Console log from the crashed session
+      description: Attach the complete matching log from `%APPDATA%\Fatshark\Vermintide 2\console_logs\`. Raw .log files are accepted; .txt, .zip, and .gz are also allowed (25 MB maximum).
+    validations:
+      required: true
+      accept: ".log,.txt,.zip,.gz"
+  - type: textarea
+    id: extra_evidence
+    attributes:
+      label: Additional evidence
+      description: Optional screenshot of the crash dialog or continuous reproduction video.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Final checks
+      options:
+        - label: The attached log is from the exact session that crashed.
+          required: true
+        - label: The development TEST build was disabled, and every lobby member used the same version.
+          required: true
+        - label: I understand that this issue and its attachments are publicly visible.
+          required: true

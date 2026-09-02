@@ -1,5 +1,8 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
+  - name: Bug-reporting instructions
+    url: https://github.com/Ensrick/doomrocket-public/blob/main/docs/BUG_REPORTING.md
+    about: Read where to find the console log and what information makes a report actionable.
   - name: Development TEST bug reports
     url: https://github.com/Ensrick/doomrocket-private/issues/new/choose
     about: Report bugs from the experimental TEST Workshop build in the development repository.

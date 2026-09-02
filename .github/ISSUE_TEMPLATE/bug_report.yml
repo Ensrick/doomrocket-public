@@ -1,82 +1,95 @@
-name: Public-alpha bug report
-description: Report a reproducible problem in the public Warprocket Bombardier alpha.
-title: "[Bug]: "
+name: Gameplay or presentation bug
+description: Report a reproducible gameplay, visual, animation, audio, or multiplayer problem.
+title: "[Bug] "
 labels:
   - bug
 body:
   - type: markdown
     attributes:
       value: |
-        This form is for the public-alpha Workshop build. Use the development repository for the TEST build.
-  - type: input
-    id: mod_version
+        Thanks for helping test the public alpha. Please keep the report concise and attach the complete session log rather than pasting it into the page.
+
+        This form is only for Workshop item `3771657344`. Use the development repository for the TEST build.
+  - type: dropdown
+    id: area
     attributes:
-      label: Mod version
-      description: Copy the `[doomrocket:LOAD]` version from the console log.
-      placeholder: v0.1.55-alpha
+      label: Affected area
+      options:
+        - Spawning or AI behavior
+        - Rocket, damage, or combat
+        - Model, texture, or animation
+        - Sound or visual effects
+        - Multiplayer or networking
+        - Other
     validations:
       required: true
   - type: input
-    id: game_build
+    id: loaded_banner
     attributes:
-      label: Vermintide 2 build
-      description: Include the game build or patch shown in the log.
+      label: Exact loaded build banner
+      description: Copy the `[doomrocket:LOAD]` line from the reproducing log. Enter `unknown` only if it is genuinely unavailable.
+      placeholder: "[doomrocket:LOAD] v0.1.55-alpha"
     validations:
       required: true
   - type: dropdown
     id: network_role
     attributes:
-      label: Network role
+      label: Your network role
       options:
-        - Listen host
+        - Host
         - Remote client
-        - Solo/offline
+        - Solo or offline
+        - Unknown
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction steps
-      description: Give the exact spawn, combat, death, or level sequence.
+      label: Steps to reproduce
+      description: Start from launching the game and give the shortest reliable sequence.
       placeholder: |
-        1. Launch...
-        2. Spawn...
-        3. Observe...
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior
+        1. Launch the game with the public alpha enabled.
+        2. Start...
+        3. Spawn or encounter...
+        4. Observe...
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: Actual behavior
+      label: What happened?
+      description: Describe what you saw or heard and how often it happened.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
     validations:
       required: true
   - type: upload
     id: console_log
     attributes:
       label: Console log
-      description: Attach the complete, unedited console log. Raw .log files are accepted; .txt, .zip, and .gz are also allowed. Maximum size is 25 MB.
+      description: Attach the complete log from `%APPDATA%\Fatshark\Vermintide 2\console_logs\`. Raw .log files are accepted; .txt, .zip, and .gz are also allowed (25 MB maximum).
     validations:
       required: true
       accept: ".log,.txt,.zip,.gz"
   - type: textarea
-    id: evidence
+    id: media
     attributes:
-      label: Additional evidence
-      description: Attach any continuous video or screenshots here. Do not paste only the final crash popup.
+      label: Screenshots or video
+      description: Optional. Drag screenshots or a short continuous video here when the problem is visual.
     validations:
       required: false
   - type: checkboxes
     id: checks
     attributes:
-      label: Pre-submission checks
+      label: Final checks
       options:
-        - label: I restarted the game after the Workshop update and verified the exact `[doomrocket:LOAD] v0.1.55-alpha` version.
+        - label: I restarted Vermintide after the Workshop update and reproduced this with the public alpha.
           required: true
-        - label: Every player used this public-alpha build, and the TEST build was not enabled at the same time.
+        - label: The development TEST build was disabled, and every lobby member used the same version.
+          required: true
+        - label: I understand that this issue and its attachments are publicly visible.
           required: true

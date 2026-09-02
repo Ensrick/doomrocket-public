@@ -13,3 +13,21 @@ work remains isolated on the development line until it passes in-game testing.
 
 Do not enable the public and TEST Workshop builds simultaneously. Every player
 in a lobby must install and enable the same version.
+
+## Reporting bugs and feedback
+
+Use the [public issue chooser](https://github.com/Ensrick/doomrocket-public/issues/new/choose)
+and select the form that matches what happened:
+
+- **Gameplay or presentation bug** for spawning, combat, rockets, models,
+  textures, animation, sound, or multiplayer behavior.
+- **Crash report** when Vermintide closes or displays a crash/assertion dialog.
+- **Balance or design feedback** for difficulty, damage, health, behavior, or
+  feature suggestions.
+
+Before filing, restart the game after the Workshop update, verify the log says
+`[doomrocket:LOAD] v0.1.55-alpha`, and make sure the TEST build is disabled.
+Attach the complete console log from
+`%APPDATA%\Fatshark\Vermintide 2\console_logs\`; do not paste the entire file
+into the issue body. See [Bug-reporting instructions](docs/BUG_REPORTING.md) for
+the short checklist.

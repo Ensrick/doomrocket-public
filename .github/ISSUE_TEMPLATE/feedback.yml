@@ -1,0 +1,52 @@
+name: Balance or design feedback
+description: Suggest a focused balance, behavior, presentation, or usability improvement.
+title: "[Feedback] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for feedback rather than a defect. Describe one focused change and the playtest observation behind it.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feedback area
+      options:
+        - Health, armor, or survivability
+        - Rocket damage or trajectory
+        - AI behavior or difficulty
+        - Spawning or encounter balance
+        - Model, animation, sound, or effects
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: observation
+    attributes:
+      label: What did you observe?
+      description: Include difficulty, number of players, host/client role, and enough context to understand the playtest.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What would you change?
+      description: State the desired player-facing result. Exact numeric values are optional.
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Possible tradeoffs
+      description: Optional. Note any effect on difficulty, readability, performance, or multiplayer fairness.
+    validations:
+      required: false
+  - type: upload
+    id: evidence
+    attributes:
+      label: Supporting log or media
+      description: Optional. Attach a console log, screenshot, or short video when it helps explain the feedback.
+    validations:
+      required: false
+      accept: ".log,.txt,.zip,.gz,.png,.jpg,.jpeg,.gif,.mp4,.mov,.webm"
