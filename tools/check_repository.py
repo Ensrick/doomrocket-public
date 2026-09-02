@@ -132,6 +132,7 @@ def main() -> int:
             "docs/BUG_REPORTING.md",
             "docs/RELEASE_CHANNELS.md",
             "docs/TESTER_CHECKLIST.md",
+            "tools/Invoke-DoomrocketRelease.ps1",
         ):
             if not (ROOT / required_file).is_file():
                 failures.append(f"missing public guidance: {required_file}")
