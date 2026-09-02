@@ -14,34 +14,57 @@ The result must be evaluated as three independent lanes:
 
 | Lane | Observed result | Remaining limitation |
 |---|---|---|
-| Warlock body/corpse | Passed the latest three-corpse host analyzer run | This is host `source=unit` evidence only; remote-client `source=husk`, post-monitor wake, and long-lived corpse behavior still need their own captures |
-| Loaded launcher death drop | Visually reported working after making `pRocket` a child of actor-owned `pRocketLauncher` | Do not regress the hierarchy or add a second dynamic actor |
-| Launcher hand/back placement | v0.1.54 failed visually: Crunch's launcher was displaced from the enemy while both wielded and unwielded | The v0.1.55 presentation-space bake, semantic-grip calibration, and rigid-MVP tether exclusion are implemented; source and fresh compiled-bundle gates pass, while a uniquely versioned in-game visual test remains required |
+| Warlock body/corpse | v0.1.55 is user-confirmed recognizable and stable in the latest host test; all 20 host traces completed with the visual alive and every callback writing a pose | This is host `source=unit` evidence only; remote-client `source=husk`, an explicit post-monitor wake, and long-lived cleanup still need their own captures |
+| Loaded launcher death drop | User-confirmed working in v0.1.55 after making `pRocket` a child of actor-owned `pRocketLauncher` | Do not regress the hierarchy or add a second dynamic actor |
+| Launcher hand/back placement | User-confirmed correct in v0.1.55 after the presentation-space bake, semantic-grip calibration, and rigid-MVP tether exclusion | The flexible backpack tether, separate short conduit, and chimney particles remain deliberately deferred |
 
-The accepted v0.1.54 host log is
+The accepted host MVP is public Workshop item `3771657344`,
+v0.1.55-dev, ManifestID `6225347386542634141`, from Git commit `90f2c53`.
+The current runtime capture is
+`C:\Users\danjo\Downloads\console-2026-08-13-02.50.55-72751c68-b9fa-4a86-91d7-55e6a520a98c.log`.
+It contains the exact `[doomrocket:LOAD] v0.1.55-dev` banner, 20 complete
+five-second host `source=unit` traces, and 20 material summaries of
+`slots=5/5 custom_textures=6/6 resident`. Every trace stopped with both units
+alive, `callbacks=pose_writes`, and `sleep_skips=0`; the largest recorded wall
+gap was 23.6 ms. The user directly confirmed that the final launcher is placed
+correctly in hand and on the back, the set-03/set-04 appearance is correct, the
+loaded launcher and warhead fall together, and the visible Warlock corpse is
+stable. Those spatial and appearance results are visual evidence, not values
+that the console telemetry can infer.
+
+The first six ordinary traces in that capture satisfy every current analyzer
+threshold: maximum hips drift was 0.176 m, maximum anchor drift was 0.363 m,
+and the largest wall gap was 18.5 ms. The following fourteen-corpses-at-once
+collision stress batch produced 15 transient `anchor_max_drift > 0.5` samples
+at 250/500 ms, including one 8.404 m excursion. All 20 traces were back within
+the gate by one second and finished with maximum hips drift 0.166 m and maximum
+anchor drift 0.305 m. The unfiltered file therefore correctly prints
+`[ragdoll-log] FAIL`; do not relabel it as a whole-file analyzer pass or weaken
+the threshold merely to accept a mass-overlap stress capture. Keep dense
+collision stress separate from the ordinary acceptance capture in future runs.
+
+The preceding clean whole-file host analyzer baseline remains the v0.1.54 log
 `C:\Users\danjo\Downloads\console-2026-08-13-01.15.59-7009c335-e195-4768-8c49-a99e37659f53.log`.
-It contains `[doomrocket:LOAD] v0.1.54-dev`, three complete five-second corpse
-traces, and three material summaries of `slots=5/5 custom_textures=6/6
-resident`. The exact analyzer command reports:
+It contains three complete five-second corpse traces and reports:
 
 ```text
 [ragdoll-log] OK - 3 corpse trace(s), >=5.001 s, hips drift <= 0.25 m
 ```
 
-Every trace stopped with `callbacks=602 pose_writes=602 sleep_skips=0`; final
+Every v0.1.54 trace stopped with
+`callbacks=602 pose_writes=602 sleep_skips=0`; final
 hips drift was 0.046, 0.040, and 0.007 m. Parent, named-root, scale, and
 non-hips-translation mutation counts were all zero. This proves the monitored
-host body handoff. It does not prove weapon placement because no console datum
-measures where the rigid launcher appears relative to a hand or back mount.
+host body handoff for that build. It does not prove weapon placement because
+no console datum measures where the rigid launcher appears relative to a hand
+or back mount. That v0.1.54 artifact was ManifestID
+`3649786646933166566` and its placement failed visually.
 
-The tested Workshop artifact was friends-only item `3771657344`, v0.1.54
-ManifestID `3649786646933166566`.
-
-The v0.1.55 candidate was clean-built, spliced, tested, deployed, and uploaded
-to the same friends-only item as ManifestID `6225347386542634141`. Its 39
-weapon/source/compiled regressions, 17 texture regressions, and complete
-ragdoll/pipeline suite pass. This proves the artifact matches the reviewed
-source contracts; hand/back placement still needs in-game visual acceptance.
+The accepted v0.1.55 artifact was clean-built, spliced, tested, deployed, and
+uploaded in the mandatory order below. Its 39 weapon/source/compiled
+regressions, 17 texture regressions, and complete offline ragdoll/pipeline suite
+pass. Together with the user-confirmed runtime result, this closes the current
+host MVP without claiming the uncaptured client/husk or deferred-effects lanes.
 
 ## Authoritative inputs and provenance
 
@@ -165,7 +188,7 @@ the inverse transform and then its opposite, so it could report sub-millimetre
 agreement while the engine-facing weapon root was wrong. A self-inverting test
 is not an attachment-space test.
 
-### Presentation-space calibration (implemented; v0.1.55 runtime pending)
+### Presentation-space calibration (implemented and user-confirmed in v0.1.55)
 
 Crunch's final launcher and loaded rocket are unrigged, unparented presentation
 props. They were not deliberately authored in the legacy weapon-root frame and
@@ -279,7 +302,8 @@ axis. It also rechecks that the compiled `pRocket` inherits the one
 `rp_dropped` actor. This gate rejected the stale pre-calibration bundle, then
 passed after the clean v0.1.55 build. The rebuilt compiled grip centroid was
 `(-0.000074506, 1.108050346, 0.000148831)` cm. Source and compiled success are
-still not runtime visual acceptance.
+not themselves runtime visual acceptance; the separate v0.1.55 in-game
+observation supplied that gate.
 
 ## Death-drop and projectile physics closure
 
@@ -356,13 +380,13 @@ opens the GUI.
 
 ```powershell
 $vmb = 'C:\Users\danjo\source\repos\vmb-launcher-baseline-056-20260726\bin\Release\net9.0-windows\win-x64\publish\VMBLauncher.exe'
-$cfg = 'C:\Users\danjo\source\repos\_doomrocket_vmb\vmblauncher.settings.json'
+$cfg = 'C:\Users\danjo\source\repos\_doomrocket_public_vmb\vmblauncher.settings.json'
 
 & $vmb build doomrocket --clean --config $cfg
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\splice_warlock_materials.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\splice_warlock_materials.ps1 -UseVerifiedCache
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-WarlockPipeline.ps1
 & $vmb deploy doomrocket --no-remote --config $cfg
-& $vmb upload doomrocket --config $cfg
+& $vmb upload doomrocket --allow-public --config $cfg
 ```
 
 The order is mandatory. VMB's SDK build emits placeholder child-material
@@ -381,10 +405,18 @@ without a fresh log record and matching content is not publication evidence.
 
 ## Runtime acceptance
 
-The tester should use the established spawn/kill method and a uniquely bumped
-version. Confirm the exact `[doomrocket:LOAD]` banner before evaluating the
-model. Disable Less Corpses and other corpse/physics replacement mods for the
-acceptance capture.
+v0.1.55 fulfilled the observed host-MVP weapon, appearance, drop, and corpse
+lanes. Treat the checklist below as a required regression protocol after every
+future asset, hierarchy, material, or physics change. The tester should use the
+established spawn/kill method and a uniquely bumped version. Confirm the exact
+`[doomrocket:LOAD]` banner before evaluating the model. Disable Less Corpses
+and other corpse/physics replacement mods for the acceptance capture.
+
+For the public multiplayer playtest, every participating player must subscribe
+to and enable the same Doomrocket Workshop item/version. The host controls the
+spawn method. Preserve both sides' logs: the host must identify deaths as
+`source=unit`, while a remote tester's valid client capture must identify them
+as `source=husk`.
 
 At minimum, record and inspect:
 

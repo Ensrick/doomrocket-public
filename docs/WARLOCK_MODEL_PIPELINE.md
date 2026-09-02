@@ -60,9 +60,13 @@ root-space export, projectile, and death-drop contract is in
 
 ## Ship procedure
 
-`VMBLauncher build` -> `tools/splice_warlock_materials.ps1` ->
-`tools/Test-WarlockPipeline.ps1` -> `deploy` -> `upload` -> git commit+push.
-NEVER `vmblauncher all` (it would upload the unspliced bundle).
+Clean `VMBLauncher build` -> `tools/splice_warlock_materials.ps1` ->
+`tools/Test-WarlockPipeline.ps1` -> local `deploy --no-remote` -> `upload` ->
+verify the fresh Workshop log and deployed hashes -> git commit+push. NEVER
+`vmblauncher all` (it would upload the unspliced bundle). Use the known
+headless v0.5.6 launcher and Doomrocket-specific configuration; the exact
+commands and publication checks are authoritative in
+`docs/research/WARLOCK_WEAPON_PIPELINE.md`.
 
 ## Failure ledger
 
@@ -100,7 +104,7 @@ NEVER `vmblauncher all` (it would upload the unspliced bundle).
 | v0.1.52-dev fix candidate (uploaded; runtime pending) | Preserve the v0.1.51 preflight, lifecycle, visibility, and telemetry hardening, but force pose transfer on every owner-world callback until `monitor_complete`. Discover and consult native dynamic actors only after the monitor has closed | This restores the proven v0.1.50 behavior during the acceptance window while retaining post-monitor sleep/wake optimization. Clean build, exact material splice, full pipeline, ragdoll regressions, and 17 texture tests passed | Friends-only Workshop item `3771657344`, ManifestID `2963729984774018388`. Static and mutation tests are necessary but insufficient. Do not claim runtime success until a uniquely versioned v0.1.52 host log and visual test pass; remote-client `source=husk` and post-monitor wake remain required |
 | v0.1.53-dev (host body passed; weapon drop failed) | Carries the v0.1.52 sleep-order fix forward and logs `pose_writes` plus `sleep_skips` at every checkpoint/stop. Replaces the Dalo placeholder launcher and projectile geometry with Crunch's final set-03/set-04 meshes and texture inputs | Four host corpses passed the complete body gate: `callbacks=pose_writes`, zero sleep skips, and hips drift below 0.25 m. The loaded `pRocket` nevertheless floated after death because it was a sibling of the physics-owned `pRocketLauncher`; `rp_dropped` moved only the launcher subtree | Body result is accepted for the host lane. Weapon-drop hierarchy failed visually even though the engine emitted no actor error. Log: `console-2026-08-13-00.17.18-321ad4fb-ba9c-4073-b9df-bd5394b1b3d1.log`; ManifestID `7981237903583458691` |
 | v0.1.54-dev (host body/drop passed; launcher placement failed) | Kept the v0.1.53 body implementation unchanged and parented loaded `pRocket` beneath actor-owned `pRocketLauncher` without adding a second body | Three host deaths passed with `callbacks=pose_writes=602`, zero sleep skips, and at most 0.058 m hips drift; the tester confirmed launcher and warhead fell together. The replacement launcher nevertheless floated away from both hand and back because the exporter baked an inverse character-hand transform into unrigged prop geometry | Ragdoll/drop result accepted for the host lane. Placement rejected. Log: `console-2026-08-13-01.15.59-7009c335-e195-4768-8c49-a99e37659f53.log`; ManifestID `3649786646933166566` |
-| v0.1.55-dev weapon-placement fix candidate | Preserves the accepted body and drop hierarchy. Removes the inverse-hand bake, retains the verified object rotation, translates the final launcher's semantic pistol-grip cap into the SHA-pinned legacy weapon frame, and excludes the exact 1,608-vertex unrigged backpack tether from the rigid gun | Source and compiled gates cover the reviewed 3,308/1,608 split, canonical and signed direction, origin/surface proximity, the unique 217-vertex grip landmark, exact runtime nodes, and loaded-warhead actor closure. The complete pipeline passes after a clean build and native-material splice | Friends-only ManifestID `6225347386542634141`. Require exact v0.1.55 banner plus visual wielded, unwielded, firing/reload, and death-drop checks. The flexible tether, separate short conduit, and chimney particles remain deliberately deferred |
+| v0.1.55-dev (host MVP accepted) | Preserves the accepted body and drop hierarchy. Removes the inverse-hand bake, retains the verified object rotation, translates the final launcher's semantic pistol-grip cap into the SHA-pinned legacy weapon frame, and excludes the exact 1,608-vertex unrigged backpack tether from the rigid gun | Source and compiled gates cover the reviewed 3,308/1,608 split, canonical and signed direction, origin/surface proximity, the unique 217-vertex grip landmark, exact runtime nodes, and loaded-warhead actor closure. The complete pipeline passed after a clean build and native-material splice. The user then confirmed the final weapon placement/appearance, loaded death drop, and visible corpse in game | Public Workshop item `3771657344`, ManifestID `6225347386542634141`, Git commit `90f2c53`. The latest log has 20 complete host traces with `callbacks=pose_writes`, zero sleep skips, and 20 resident-material summaries. Its first six ordinary traces meet every analyzer threshold; a separate fourteen-corpse overlap stress batch has transient early anchor excursions but settles by one second. Remote `source=husk` and explicit post-monitor wake/cleanup remain uncaptured; the flexible tether, separate short conduit, and chimney particles remain deferred |
 | v0.1.47 | User report "No ragdoll" (2026-08-03) was a STALE BUILD: the 22:21 session log shows `[doomrocket:LOAD] v0.1.41-dev` + the v0.1.41 spawn-audit line | v0.1.42-46 were deployed locally but NEVER uploaded; the user's Steam restart (pulling an unrelated gt update) re-synced item 3771657344 back to the 07-27 v0.1.41 manifest - the exact clobber class in `feedback_local_deploy_clobbered_must_upload` | v0.1.47-dev republishes the current tree (identical code to v0.1.46 + version/title bump), upload log-confirmed ManifestID 3747860009260434476. NOTE: launcher v0.5.7+ refuses direct `upload` (publication receipt required); the out-of-monorepo doomrocket flow uses the v0.5.6 baseline binary `vmb-launcher-baseline-056-20260726` |
 
 ## Uncatchable crash classes (pcall is useless)
@@ -114,7 +118,7 @@ NEVER `vmblauncher all` (it would upload the unspliced bundle).
 - `Unit.node()` on a missing node (why the old bridge pruned via
   `Unit.has_node`).
 
-## Current native-carrier visual handoff (v0.1.53 host passed; client pending)
+## Current native-carrier visual handoff (v0.1.55 host MVP accepted; client pending)
 
 The hidden native ratling unit owns the ragdoll, and the custom Warlock unit
 owns no physics. The core carrier-to-visual transfer has a v0.1.50 host
@@ -122,10 +126,18 @@ baseline. v0.1.51 then proved that lifecycle hardening can regress that transfer
 if sleep state is consulted during the transition: its visual accumulated
 2.505 m of hips drift while the callback continued normally. v0.1.52 introduced
 the ordering fix but received no runtime capture. v0.1.53 carried it forward
-with counter-complete telemetry and passed four host deaths: every callback
-wrote a pose, no sleep callback was skipped, and all four traces stayed inside
-the drift gate. Remote-client and post-monitor-wake coverage remain pending. Offline parsing
-of the compiled resources found:
+with counter-complete telemetry and passed four host deaths; v0.1.54 passed
+three more and corrected the loaded-warhead drop. v0.1.55 preserves that body
+path and is user-confirmed visually with the corrected final launcher. Its
+latest log contains 20 complete host traces: every callback wrote a pose, no
+sleep callback was skipped, and both units remained alive through every
+five-second monitor. The first six ordinary traces meet all strict analyzer
+thresholds. The following fourteen-corpses-at-once overlap stress batch has
+transient anchor excursions at 250/500 ms, so the combined log is stress
+evidence rather than a clean whole-file analyzer pass; every trace is back
+within the anchor gate by one second. Remote-client and explicit post-monitor
+wake/cleanup coverage remain pending. Offline parsing of the compiled resources
+found:
 
 - custom: 142 scene nodes, 138 state-machine bones, 1 skin, 0 actors and no
   physics scene;
@@ -158,10 +170,12 @@ native dynamic actors sleep and queue again when any actor wakes. It is removed
 only when either unit dies or on explicit state/mod teardown. Checkpoints use
 game time, while wall-clock callback gaps are accumulated as the worst gap
 between samples. Mesh reveal attempts are changed to `false`; whole-unit reveal
-attempts are followed by a complete carrier-mesh re-hide. The v0.1.53 candidate
-still needs visual inspection, post-monitor wake/cleanup, and remote-client husk
-coverage. See `docs/HOW_TO_CREATE_A_VT2_RAGDOLL.md` for the practical procedure
-and `docs/research/RAGDOLL_VISUAL_HANDOFF.md` for the forensic derivation.
+attempts are followed by a complete carrier-mesh re-hide. v0.1.55 has passed the
+observed host visual/MVP lane; explicit post-monitor wake/cleanup, pause, and
+remote-client `source=husk` coverage remain required before claiming those
+broader lanes. See `docs/HOW_TO_CREATE_A_VT2_RAGDOLL.md` for the practical
+procedure and `docs/research/RAGDOLL_VISUAL_HANDOFF.md` for the forensic
+derivation.
 
 AnimationSystem's safe-callback queue is global, while ScriptWorld drains it
 for every active world. The callback is therefore one-shot and never queues
@@ -241,21 +255,30 @@ names == SM ragdolls block == .bones entries and joints == actors-1.
   comparison proves no flip or resampling is required. The 17-test texture
   regression suite and deterministic donor-payload validation pass; the
   verified build/splice was uploaded and its body appearance passed the user's
-  in-game check. Launcher/rocket set-03/set-04 adapters are part of v0.1.53 and
-  still require their own visual check. See
+  in-game check. Launcher/rocket set-03/set-04 adapters ship in the accepted
+  v0.1.55 host MVP and their appearance also passed the user's in-game check.
+  See
   `docs/research/WARLOCK_TEXTURE_PIPELINE.md`.
 - **Native-carrier visual handoff**: v0.1.50 passed the original five-second
   host baseline. v0.1.51 is a known pre-monitor sleep-suppression failure; the
-  current fix candidate is identified as `v0.1.53-dev`; v0.1.52 was uploaded
-  but never runtime-captured. Reject logs from any older
-  build. Do not promote the candidate until visual identity, bounded monitor
-  drift, a post-five-second sleep/wake interaction, ordinary cleanup, pause
-  behavior, and a remote-client `source=husk` run pass.
-  Never reveal the native ratling meshes as a fallback.
-- **Launcher/projectile:** v0.1.53 replaces the Dalo placeholder meshes with
-  Crunch's final launcher plus loaded rocket and standalone rocket, using
-  authored set 03/04 textures. The existing rigid attachment, muzzle, and
-  projectile node contracts remain unchanged. Runtime placement and appearance
-  remain the tester gate.
+  ordering fix is runtime-proven in v0.1.53, v0.1.54, and the accepted v0.1.55
+  host MVP. The latest capture and user observation establish visible identity
+  and ordinary host stability, while its deliberately dense overlap batch is
+  stress evidence rather than a clean whole-file analyzer pass. An explicit
+  post-five-second sleep/wake interaction, ordinary cleanup, pause behavior,
+  and a remote-client `source=husk` run remain open. Never reveal the native
+  ratling meshes as a fallback.
+- **Launcher/projectile:** v0.1.55 ships Crunch's final launcher plus loaded
+  rocket and standalone rocket with authored set 03/04 textures. The corrected
+  semantic-grip placement, hand/back appearance, firing/reload behavior, and
+  one-actor loaded death drop passed the user's in-game test. Preserve the
+  existing rigid attachment, muzzle, projectile nodes, and actor closure, and
+  rerun the complete source/compiled/runtime gates after any change.
 - **Flexible tube and chimney particles:** deferred from the MVP so neither can
   confound the weapon/ragdoll test. Author and validate them as separate changes.
+
+The public Workshop listing makes the remaining multiplayer lane available to
+Crunch and other testers. Every player must subscribe to and enable the same
+Doomrocket version; the host controls spawning. Collect both logs so the host
+records `source=unit` and the remote client records `source=husk`. Public
+visibility does not itself prove client behavior.

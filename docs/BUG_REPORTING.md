@@ -17,12 +17,13 @@ build problems in the
 ## Before filing
 
 1. Let Steam finish updating the mod, then restart Vermintide 2.
-2. Enable only the public Workshop item `3771657344`. Do not enable the TEST
+2. Use the Modded Realm and load Vermintide Mod Framework above Doomrocket.
+3. Enable only the public Workshop item `3771657344`. Do not enable the TEST
    item at the same time.
-3. In multiplayer, confirm every player has the same build installed and
+4. In multiplayer, confirm every player has the same build installed and
    enabled.
-4. Reproduce the problem once more if it is safe to do so.
-5. Record whether you were the host, a remote client, or playing solo.
+5. Reproduce the problem once more if it is safe to do so.
+6. Record whether you were the host, a remote client, or playing solo.
 
 ## Attach the correct console log
 

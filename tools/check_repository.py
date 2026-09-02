@@ -118,12 +118,21 @@ def main() -> int:
             failures.append("public title must not contain TEST, Currently Unstable, or -dev")
         for required in (
             "[h2]Bug reports and feedback[/h2]",
+            "1369573612",
+            "Modded Realm",
             "doomrocket-public/issues/new/choose",
             f"[doomrocket:LOAD] v{version}",
         ):
             if required not in cfg:
                 failures.append(f"public Workshop description is missing: {required}")
-        for required_file in ("README.md", "docs/BUG_REPORTING.md", "docs/RELEASE_CHANNELS.md"):
+        for required_file in (
+            "README.md",
+            "PROJECT_STATUS.md",
+            "CONTRIBUTING.md",
+            "docs/BUG_REPORTING.md",
+            "docs/RELEASE_CHANNELS.md",
+            "docs/TESTER_CHECKLIST.md",
+        ):
             if not (ROOT / required_file).is_file():
                 failures.append(f"missing public guidance: {required_file}")
         check_issue_forms(failures, version)

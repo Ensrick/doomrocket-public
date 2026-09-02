@@ -387,7 +387,7 @@ Analyze a runtime log:
 py -3 tools/analyze_warlock_ragdoll_log.py "C:\path\to\console.log" --expected-version 0.1.55-alpha
 ```
 
-Supply the exact candidate version for every acceptance capture. The option is
+Supply the exact tested version for every acceptance capture. The option is
 deliberately not a default requirement so old logs remain analyzable, but a
 release result without a matching `[doomrocket:LOAD]` banner is not valid.
 
@@ -461,10 +461,36 @@ reported. The visual pose was being suppressed, not deformed or stalled.
 
 v0.1.51 had discovered/consulted sleeping actors before the monitor completed
 and skipped the transfer while the native ragdoll moved. v0.1.52 moved sleep
-optimization behind the completed monitor. v0.1.53 carries that fix forward
-and requires the log to prove `callbacks=pose_writes` and `sleep_skips=0` over
-the full acceptance window. This remains a fix design until runtime visuals
-and telemetry pass.
+optimization behind the completed monitor. v0.1.53 carried that fix forward
+and made the log prove `callbacks=pose_writes` and `sleep_skips=0` over the full
+acceptance window. v0.1.53, v0.1.54, and v0.1.55 host captures runtime-prove
+that ordering: every monitored callback wrote a pose and no pre-monitor sleep
+skip occurred.
+
+### v0.1.55 accepted host MVP and dense-stress distinction
+
+The 2026-08-13 v0.1.55 log
+`console-2026-08-13-02.50.55-72751c68-b9fa-4a86-91d7-55e6a520a98c.log`
+contains 20 complete host `source=unit` traces and 20 material summaries. Across
+all traces, the maximum hips drift was 0.185 m, callback gaps stayed below
+23.6 ms, every stop had `callbacks=pose_writes`, and `sleep_skips=0`. The user
+also confirmed the visible corpse and weapon behavior in game.
+
+The capture combines two different tests. Its first six ordinary traces pass
+the strict analyzer, with maximum anchor drift 0.363 m. The following fourteen
+corpses were killed together in the same collision pile. Their differing
+extremity poses briefly produced 15 anchor-offset excursions at 250/500 ms,
+including one 8.404 m diagnostic value, while hips/root/deformation, pose-write,
+and performance gates remained bounded. Every trace returned below the normal
+anchor gate by one second and ended at or below 0.305 m.
+
+Do not weaken ordinary acceptance to bless such a file. Capture normal deaths
+separately and require the default analyzer to pass. Use `--dense-stress` only
+for a separate ten-or-more-corpse overlap capture; it waives only transient
+250/500 ms anchor-offset excess and requires ordinary anchor compliance at
+1000, 2000, and 5000 ms. All other gates and the visual test remain strict.
+This result establishes the observed host MVP, not remote-client `source=husk`,
+pause, explicit post-monitor wake, or long-lived cleanup behavior.
 
 ## 8. Failure signatures and their causes
 
@@ -477,22 +503,32 @@ and telemetry pass.
 | Stable ratling corpse appears | Carrier meshes were revealed as a shortcut | Keep all carrier meshes hidden; visible model identity is an acceptance gate |
 | Manual pose looks correct in logs but diverges after rendering | Animation writes later in the frame | Set bone mode `ignore` and apply from the post-animation safe callback |
 | Several pose callbacks per rendered frame | Safe callback self-requeued and was drained by multiple worlds | Enqueue once after the exact owner-world animation pass |
-| Hips and anchor drift grow while callbacks, frame gaps, deformation ratios, and mutation counters remain normal | Sleep detection suppressed pose writes during the monitor; v0.1.51 reached 2.505 m hips drift despite 602 callbacks | Forbid actor discovery, sleep caching, and sleep-based suppression until `monitor_complete`; require `callbacks=pose_writes` and `sleep_skips=0` in the current runtime candidate |
+| Hips and anchor drift grow while callbacks, frame gaps, deformation ratios, and mutation counters remain normal | Sleep detection suppressed pose writes during the monitor; v0.1.51 reached 2.505 m hips drift despite 602 callbacks | Forbid actor discovery, sleep caching, and sleep-based suppression until `monitor_complete`; require `callbacks=pose_writes` and `sleep_skips=0` in the tested build |
 | Corpse detaches only after five seconds or after a later impact | Monitor completion removed the driver, or sleep/wake detection failed to resume it | Keep the driver registered for unit lifetime; reproduce with the post-monitor wake test |
 | A paused test reaches checkpoints or a hitch disappears from telemetry | Monitor used wall time, or only the final pre-sample gap was logged | Use game time for checkpoint lifetime and accumulate the worst wall gap per interval |
 
 ## 9. Build and ship without invalidating the result
 
-For Doomrocket, use the documented sequence:
+For Doomrocket, use the known headless v0.5.6 launcher and its project-specific
+configuration:
 
-```text
-VMBLauncher build
-tools/splice_warlock_materials.ps1
-tools/Test-WarlockPipeline.ps1
-VMBLauncher deploy
-VMBLauncher upload
-git commit + push
+```powershell
+$vmb = 'C:\Users\danjo\source\repos\vmb-launcher-baseline-056-20260726\bin\Release\net9.0-windows\win-x64\publish\VMBLauncher.exe'
+$cfg = 'C:\Users\danjo\source\repos\_doomrocket_public_vmb\vmblauncher.settings.json'
+
+& $vmb info doomrocket --config $cfg
+& $vmb build doomrocket --clean --config $cfg
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\splice_warlock_materials.ps1 -UseVerifiedCache
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-WarlockPipeline.ps1
+& $vmb deploy doomrocket --no-remote --config $cfg
+& $vmb upload doomrocket --allow-public --config $cfg
 ```
+
+After upload, require a fresh successful ManifestID in `workshop_log.txt`, then
+compare every deployed Workshop payload hash with local `bundleV2`. Verify the
+intended `itemV2.cfg` visibility—`public` for the alpha release—so the next
+upload cannot silently revert it. Only then commit and push the reviewed source
+to `public/main`.
 
 Never use `vmblauncher all`; it uploads before the required material splice.
 Keep mutation fixtures on inert `.fixture.txt` extensions because VMB scans the

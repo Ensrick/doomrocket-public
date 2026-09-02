@@ -3,6 +3,8 @@ description: Report a reproducible gameplay, visual, animation, audio, or multip
 title: "[Bug] "
 labels:
   - bug
+  - needs-triage
+  - public-alpha
 body:
   - type: markdown
     attributes:

@@ -3,9 +3,11 @@
 Status: **the original offset-corrected v0.1.50 handoff passed a five-second
 host baseline on 2026-08-12. v0.1.51 failed because its new sleep gate
 suppressed pose transfer before the monitor completed. v0.1.52 introduced the
-fix but received no runtime capture. v0.1.53 carries it forward with explicit
-pose-write/sleep-skip telemetry and is the current candidate; visual signoff
-and remote-client husk coverage also remain required**.
+fix but received no runtime capture. v0.1.53 added explicit pose-write/
+sleep-skip telemetry, and v0.1.53 through v0.1.55 runtime-prove the corrected
+host ordering. The v0.1.55 host MVP is user-confirmed visually; remote-client
+husk, explicit post-monitor wake, pause, and long-lived cleanup coverage remain
+required**.
 
 This note separates three things that previous builds conflated:
 
@@ -334,23 +336,28 @@ sleep cache/suppression added in v0.1.51.
 
 v0.1.52 was only an uncaptured fix candidate. v0.1.53 retains its transfer
 ordering and rejects a trace unless every pre-monitor callback wrote the pose
-and no sleep skip occurred. Static coverage does not establish runtime
-success.
+and no sleep skip occurred. That ordering subsequently passed host captures in
+v0.1.53, v0.1.54, and v0.1.55; static coverage alone still cannot establish a
+new build's runtime success.
 
-Concurrent findings outside the ragdoll result remain open: every spawn logged
-three material lookup warnings before the later runtime material assignment;
-all 11 assignments nevertheless reported 5/5 slots and 8/8 textures resident.
-The log therefore proves material residency/assignment, not correct UVs,
-channel packing, or final appearance. Bestiary also emitted a missing
-`kills_per_breed_difficulty_skaven_doomrocket_normal` stat error on initiating
-kills; telemetry continued normally, so that is a separate integration bug.
+Historical v0.1.50 evidence outside the ragdoll result included three material
+lookup warnings before each later runtime material assignment; all 11
+assignments nevertheless reported 5/5 slots and 8/8 textures resident. Those
+specific Doomrocket material warnings were not reproduced in v0.1.55, whose 20
+assignments reported 5/5 slots and 6/6 custom textures resident. Residency logs
+still cannot prove UVs, channel packing, or final appearance; v0.1.55 has a
+separate user visual approval for those pixels. Bestiary continues to emit a
+missing `kills_per_breed_difficulty_skaven_doomrocket_normal` stat error on
+initiating kills; telemetry continues normally, so that is a separate
+integration bug.
 
 ## Runtime acceptance gates
 
-Use a fresh game restart and require the fix-candidate `[doomrocket:LOAD]
-v0.1.53-dev` banner. v0.1.50 is only the original baseline, v0.1.51 is the
-known pre-monitor sleep-suppression failure, and v0.1.52 is the uncaptured
-predecessor without the final counter gate.
+Use a fresh game restart and require the exact uniquely bumped tested-build
+`[doomrocket:LOAD]` banner. The accepted host MVP is `v0.1.55-dev`; v0.1.50 is
+only the original baseline, v0.1.51 is the known pre-monitor sleep-suppression
+failure, and v0.1.52 is the uncaptured predecessor without the final counter
+gate.
 Accept only when both runtime visuals and post-animation logs agree:
 
 - at least 10 valid non-gibbing deaths, including single deaths, multiple rapid

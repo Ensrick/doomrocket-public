@@ -3,6 +3,8 @@ description: Suggest a focused balance, behavior, presentation, or usability imp
 title: "[Feedback] "
 labels:
   - enhancement
+  - needs-triage
+  - public-alpha
 body:
   - type: markdown
     attributes:

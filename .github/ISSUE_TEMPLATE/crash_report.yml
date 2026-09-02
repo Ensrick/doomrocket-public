@@ -3,6 +3,9 @@ description: Report a crash, assertion failure, or game-closing engine error wit
 title: "[Crash] "
 labels:
   - bug
+  - crash
+  - needs-triage
+  - public-alpha
 body:
   - type: markdown
     attributes:

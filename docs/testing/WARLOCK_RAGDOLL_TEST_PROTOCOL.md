@@ -16,9 +16,15 @@ runtime capture. v0.1.53 carried that fix forward, added mandatory
 every callback wrote a pose, no sleep callback was skipped, and all four
 five-second traces passed the drift gate. v0.1.54 kept that proven body path
 unchanged and passed three more host traces while correcting the loaded-warhead
-drop hierarchy; its launcher art was nevertheless misplaced. v0.1.55 changes
-only the rigid launcher's internal mesh placement. Visual signoff and remote-client
-`source=husk` coverage also remain required.
+drop hierarchy; its launcher art was nevertheless misplaced. v0.1.55 corrected
+the rigid launcher's internal mesh placement and excluded the unrigged long
+tether. The user confirmed the visible Warlock corpse, weapon appearance,
+hand/back placement, firing/reload behavior, and loaded death drop in game.
+The latest capture contains 20 complete host traces; the first six ordinary
+traces pass every strict threshold, while a separate fourteen-corpse overlap
+stress batch has transient extremity-anchor excursions and settles by one
+second. Remote-client `source=husk`, explicit post-monitor wake, pause, and
+long-lived cleanup coverage remain required.
 
 ## Before launching
 
@@ -32,7 +38,7 @@ only the rigid launcher's internal mesh placement. Visual signoff and remote-cli
 3. Restart Steam and Vermintide 2 after the Workshop item finishes syncing.
 4. Disable **Less Corpses** and any other corpse/physics replacement mod. Use a
    corpse limit of at least 70 for the test.
-5. Confirm the console contains the exact hardened candidate banner and record
+5. Confirm the console contains the exact tested-build banner and record
    its Workshop manifest ID:
 
        [doomrocket:LOAD] v0.1.55-alpha
@@ -44,7 +50,11 @@ only the rigid launcher's internal mesh placement. Visual signoff and remote-cli
    `[doomrocket:LOAD] v0.1.53-dev` identifies the four-corpse host pass with
    the floating-warhead defect. `[doomrocket:LOAD] v0.1.54-dev` identifies the
    three-corpse host pass with corrected warhead-drop physics but displaced
-   launcher art. None is a valid v0.1.55 candidate run.
+   launcher art. None is a valid v0.1.55 test run.
+6. For a public multiplayer test, every participant must subscribe to and
+   enable the same Workshop item/version. The host controls spawning. Preserve
+   the host log and at least one remote-client log so `source=unit` and
+   `source=husk` can be verified independently.
 
 ## Capture matrix
 
@@ -73,6 +83,17 @@ gap is expected to exceed the 250 ms performance limit even though game-time
 checkpoints correctly do not advance; do not include that trace in the main
 analyzer acceptance log. The non-paused host/client captures must independently
 pass the wall-gap threshold.
+
+Run a deliberately overlapping mass-kill stress lane in another separate
+capture. Ordinary release acceptance remains strict and must print
+`[ragdoll-log] OK` without stress exceptions. Dense collision stress may be
+analyzed with the explicit `--dense-stress` option, which relaxes only transient
+250/500 ms extremity-anchor excursions when at least ten complete traces overlap
+and every trace returns below the ordinary anchor threshold at 1000, 2000, and
+5000 ms. Hips, roots, deformation, mutation, visibility, lifetime, pose-write,
+sleep-skip, and performance gates remain unchanged. A visual launch, stretch,
+physics disturbance, or failure to settle rejects the stress run regardless of
+the analyzer result.
 
 ## Visual pass criteria
 
@@ -136,6 +157,13 @@ for acceptance; omitting it is supported only for historical-log triage.
 Attach the original console log and the corresponding video to the issue; do
 not paste only selected lines because concurrent corpse IDs and load/version
 evidence must remain auditable.
+
+For the separate dense-overlap stress capture only, use:
+
+    py -3 tools/analyze_warlock_ragdoll_log.py "C:\path\to\stress-console.log" --expected-version 0.1.55-dev --dense-stress
+
+This is additive stress evidence. It never replaces the ordinary strict host
+capture, remote-client capture, or video.
 
 ## Failure triage
 

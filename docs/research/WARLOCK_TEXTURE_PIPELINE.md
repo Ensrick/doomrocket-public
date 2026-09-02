@@ -24,7 +24,25 @@ geometry while preserving the established unit, attachment, muzzle, and
 projectile-node contracts. v0.1.54 corrects one rigid-prop hierarchy defect:
 the loaded `pRocket` is a child of the physics-owned `pRocketLauncher`, so the
 two remain together when AI inventory drops the weapon on death. Neither pass
-changes the character skeleton, animation, or body-ragdoll ownership.
+changes the character skeleton, animation, or body-ragdoll ownership. v0.1.55
+then preserves the source weapon rotation, applies only the measured semantic-
+grip translation, and excludes the unrigged long tether from the rigid gun.
+The user confirmed the resulting body, launcher, and rocket appearance in game,
+along with correct hand/back placement and the one-piece loaded death drop.
+
+The v0.1.55 host capture
+`C:\Users\danjo\Downloads\console-2026-08-13-02.50.55-72751c68-b9fa-4a86-91d7-55e6a520a98c.log`
+contains 20 summaries of `slots=5/5 custom_textures=6/6 resident`. That
+telemetry proves the six custom armor/backpack texture resources were resident;
+it does not independently identify the weapon's set-03/set-04 pixels. The
+weapon and rocket texture result is therefore recorded as direct visual
+acceptance, while source conversion, sampler bindings, and compiled residency
+remain covered by the offline suites.
+
+The accepted item `3771657344` is public. For multiplayer appearance testing,
+every player must subscribe to and enable the same Doomrocket version; the host
+controls spawning. Compare host and client views rather than treating public
+visibility as evidence that remote rendering or the `source=husk` lane works.
 
 ## Authoritative sources
 
@@ -63,7 +81,7 @@ rig, so the rigid MVP derives and ships the exact retained 3,308-vertex gun.
 The 622-vertex rocket keeps its `DoomRocket_Rocket` slot. The carried unit
 includes one loaded rocket; the projectile unit uses the same rocket mesh
 independently. Neither the deferred long tether nor the distinct 198-vertex
-weapon-local conduit is part of this candidate. See
+weapon-local conduit is part of the shipping v0.1.55 rigid MVP. See
 `docs/research/WARLOCK_WEAPON_PIPELINE.md` for the pinned split and topology
 gates.
 
@@ -298,6 +316,10 @@ enemies. Verify:
 - the fired projectile is Crunch's rocket, travels on the existing forward
   axis, and retains its collision/explosion behavior.
 
-Visual approval remains a runtime test. The source graph, UV orientation,
+The accepted v0.1.55 host MVP passed this visual inspection, including the
+set-03/set-04 launcher and rocket appearance. Visual approval remains a runtime
+test for every future art or material change. The source graph, UV orientation,
 texture conversion, donor lineage, binary bindings, and package residency are
-now independently testable offline.
+independently testable offline. The flexible backpack tether, separate short
+conduit, and chimney particles remain deliberately deferred and must not be
+described as part of this result.

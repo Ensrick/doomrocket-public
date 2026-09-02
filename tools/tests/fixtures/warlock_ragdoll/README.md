@@ -57,6 +57,27 @@ Analyze a runtime capture separately:
 py -3 ./tools/analyze_warlock_ragdoll_log.py C:\path\to\console.log --expected-version 0.1.55-alpha
 ```
 
+The strict command above remains the release gate. A separate, deliberately
+opt-in dense-corpse lane may use `--dense-stress`. That mode changes only the
+interpretation of `anchor_max_drift`: an excursion is eligible only at the
+250 or 500 ms checkpoints, cannot exceed the evidence-bounded 10 m stress
+ceiling, must occur while at least 10 telemetry traces are active, and is
+eligible only when that same trace is back at or below the ordinary limit at
+every 1000, 2000, and 5000 ms checkpoint. All lifetime, visibility, hierarchy,
+deformation, hips/root, callback-gap, pose-write, and version checks remain
+strict. It is not a substitute for a separate ordinary-density capture that
+passes without the option, or for video showing no corpse/prop launch.
+
+`anchor_max_drift` is the maximum change from the calibrated owner-to-outfit
+world-space offset among root, hips, head, hands, and feet. The owner and
+outfit rigs have different proportions, so an extremity can transiently move
+that aggregate heuristic during a dense collision even while root/hips and
+the custom visual bounds remain stable. `dense_stress_transient_anchor.log`
+captures that classification boundary. Manifest mutations prove that the
+default still fails it, settlement is mandatory, the 100 ms checkpoint is not
+waived, at least 10 active traces are required, the transient ceiling is
+fail-closed, and hips drift stays strict.
+
 `--expected-version` is mandatory for a release acceptance capture. It rejects
 missing, stale, and mixed `[doomrocket:LOAD]` banners. It remains opt-in only so
 the same analyzer can triage historical logs that predate versioned telemetry.

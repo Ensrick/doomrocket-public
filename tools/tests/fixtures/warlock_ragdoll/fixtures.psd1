@@ -47,6 +47,20 @@
             ExpectedText = 'OK'
         }
         @{
+            Name = 'dense transient anchor remains a strict-default failure'
+            Log = 'dense_stress_transient_anchor.log'
+            Arguments = @('--expected-version', '0.1.55-dev')
+            ExpectedExit = 1
+            ExpectedText = 'anchor_max_drift=8.404 m exceeds 0.5 m'
+        }
+        @{
+            Name = 'explicit dense stress lane settles by one second'
+            Log = 'dense_stress_transient_anchor.log'
+            Arguments = @('--expected-version', '0.1.55-dev', '--dense-stress')
+            ExpectedExit = 0
+            ExpectedText = 'dense stress settled (2 transient anchor sample(s), peak 8.404 m)'
+        }
+        @{
             Name = 'incomplete trace without stop record'
             Log = 'missing_stop_fail.log'
             ExpectedExit = 1
@@ -192,6 +206,51 @@
             Arguments = @('--expected-version', '0.1.52-dev')
             ExpectedExit = 1
             ExpectedText = 'expected [doomrocket:LOAD] v0.1.52-dev banner, found none'
+        }
+        @{
+            Name = 'dense stress excursion has not settled at one second'
+            Source = 'dense_stress_transient_anchor.log'
+            Search = 'hips_drift=0.050 anchor_max_drift=0.200 scale_mutations=0 nonhips_translation_mutations=0 bounds_ratio=1.000 max_bone_radius_ratio=1.000 checkpoint_ms=1000 wall_gap_ms=20 elapsed_ms=1000 pose_writes=121 sleep_skips=0'
+            Replace = 'hips_drift=0.050 anchor_max_drift=0.501 scale_mutations=0 nonhips_translation_mutations=0 bounds_ratio=1.000 max_bone_radius_ratio=1.000 checkpoint_ms=1000 wall_gap_ms=20 elapsed_ms=1000 pose_writes=121 sleep_skips=0'
+            Arguments = @('--expected-version', '0.1.55-dev', '--dense-stress')
+            ExpectedExit = 1
+            ExpectedText = 'anchor_max_drift=8.404 m exceeds 0.5 m'
+        }
+        @{
+            Name = 'dense stress mode keeps hips drift strict'
+            Source = 'dense_stress_transient_anchor.log'
+            Search = 'hips_delta=0.050 hips_drift=0.050 anchor_max_drift=8.404'
+            Replace = 'hips_delta=0.050 hips_drift=0.251 anchor_max_drift=8.404'
+            Arguments = @('--expected-version', '0.1.55-dev', '--dense-stress')
+            ExpectedExit = 1
+            ExpectedText = 'hips_drift=0.251 m exceeds 0.25 m'
+        }
+        @{
+            Name = 'dense stress mode keeps the 100 ms anchor checkpoint strict'
+            Source = 'dense_stress_transient_anchor.log'
+            Search = 'id=unit-0201 source=unit owner_alive=true outfit_alive=true carrier_visible=false nodes=90 custom_actors=0 carrier_reveals=0 parent_mismatch=0 root_delta=0.000 named_root_drift=0.000 hips_delta=0.050 hips_drift=0.050 anchor_max_drift=0.100 scale_mutations=0 nonhips_translation_mutations=0 bounds_ratio=1.000 max_bone_radius_ratio=1.000 checkpoint_ms=100'
+            Replace = 'id=unit-0201 source=unit owner_alive=true outfit_alive=true carrier_visible=false nodes=90 custom_actors=0 carrier_reveals=0 parent_mismatch=0 root_delta=0.000 named_root_drift=0.000 hips_delta=0.050 hips_drift=0.050 anchor_max_drift=0.501 scale_mutations=0 nonhips_translation_mutations=0 bounds_ratio=1.000 max_bone_radius_ratio=1.000 checkpoint_ms=100'
+            Arguments = @('--expected-version', '0.1.55-dev', '--dense-stress')
+            ExpectedExit = 1
+            ExpectedText = 'anchor_max_drift=0.501 m exceeds 0.5 m'
+        }
+        @{
+            Name = 'dense stress mode requires ten active traces'
+            Source = 'dense_stress_transient_anchor.log'
+            Search = 'phase=begin id=unit-0210 source=unit'
+            Replace = 'phase=carrier_reveal id=unit-0210 source=unit'
+            Arguments = @('--expected-version', '0.1.55-dev', '--dense-stress')
+            ExpectedExit = 1
+            ExpectedText = 'anchor_max_drift=8.404 m exceeds 0.5 m'
+        }
+        @{
+            Name = 'dense stress mode rejects excursions above its evidence envelope'
+            Source = 'dense_stress_transient_anchor.log'
+            Search = 'anchor_max_drift=8.404'
+            Replace = 'anchor_max_drift=10.001'
+            Arguments = @('--expected-version', '0.1.55-dev', '--dense-stress')
+            ExpectedExit = 1
+            ExpectedText = 'anchor_max_drift=10.001 m exceeds 0.5 m'
         }
     )
 }

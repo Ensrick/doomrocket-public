@@ -17,6 +17,15 @@ work remains isolated on the development line until it passes in-game testing.
 Do not enable the public and TEST Workshop builds simultaneously. Every player
 in a lobby must install and enable the same version.
 
+## Installation
+
+1. Subscribe to [Vermintide Mod Framework](https://steamcommunity.com/sharedfiles/filedetails/?id=1369573612).
+2. Subscribe to the [Warprocket Bombardier public alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344).
+3. In the Vermintide mod launcher, enable both and place Vermintide Mod
+   Framework above Warprocket Bombardier in the load order.
+4. Launch the **Modded Realm**. This mod is not sanctioned for the Official
+   Realm.
+
 ## Reporting bugs and feedback
 
 Use the [public issue chooser](https://github.com/Ensrick/doomrocket-public/issues/new/choose)
@@ -41,3 +50,5 @@ Player reports should use the issue chooser above. Code and documentation
 contributions are welcome; read [CONTRIBUTING.md](CONTRIBUTING.md) before opening
 a pull request. Experimental gameplay changes belong in the development
 repository until they pass in-game acceptance.
+
+For routine playtests, use the copyable [public-alpha tester checklist](docs/TESTER_CHECKLIST.md).
