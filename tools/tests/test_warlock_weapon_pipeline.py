@@ -1955,6 +1955,10 @@ class CrunchWeaponTextureTests(unittest.TestCase):
                     )
                     self.assertEqual(descriptor_field(source, "streamable"), "true")
 
+    @unittest.skipUnless(
+        CRUNCH_TEXTURES.is_dir(),
+        "Crunch authored texture masters are not present",
+    )
     def test_split_scalar_maps_are_exact_authored_channels(self) -> None:
         channels = {"r": ("nm", "A"), "m": ("fix", "R"), "ao": ("fix", "G")}
         for target, (index, size) in self.TARGETS.items():
