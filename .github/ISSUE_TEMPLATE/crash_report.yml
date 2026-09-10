@@ -16,7 +16,7 @@ body:
     attributes:
       label: Exact loaded build banner
       description: Copy the `[doomrocket:LOAD]` line from the crash log. Enter `unknown` only if it is genuinely unavailable.
-      placeholder: "[doomrocket:LOAD] v0.1.55-alpha"
+      placeholder: "[doomrocket:LOAD] v0.1.56-alpha"
     validations:
       required: true
   - type: input

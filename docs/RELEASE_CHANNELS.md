@@ -6,13 +6,27 @@ published-ID guards.
 
 | Channel | GitHub | Branch | Steam Workshop | Version/title | Purpose |
 | --- | --- | --- | --- | --- | --- |
-| Public alpha | `Ensrick/doomrocket-public` | `main` | `3771657344` | `Warprocket Bombardier v0.1.55-alpha` | Last in-game accepted model, textures, weapon placement, death drop, and host ragdoll |
-| Development TEST | `Ensrick/doomrocket-private` | `private-copy` | `3794172730` | `Warprocket Bombardier TEST v0.1.60-dev` | Experimental combat, shove, ballistic aiming, and custom audio |
+| Public alpha | `Ensrick/doomrocket-public` | `main` | `3771657344` | `Warprocket Bombardier v<version>-alpha` | Accepted baseline plus deliberate, documented promotions |
+| Development TEST | `Ensrick/doomrocket-private` | `private-copy` | `3794172730` | `Warprocket Bombardier TEST v<version>-dev` | Experimental combat, movement, ballistic aiming, and custom audio |
 
 Both GitHub repositories and both Workshop items are public. The TEST listing
 must begin with a prominent development/instability warning and use the black
 thumbnail with white `TEST` text. The public-alpha title must never contain
 `TEST`, `Currently Unstable`, or `-dev`.
+
+See [project status](../PROJECT_STATUS.md) for live versus candidate versions;
+a source commit or release candidate is not proof that Steam distributed it.
+
+## Deliberate promotion
+
+Do not merge the development branch into public wholesale. List the selected
+files, source provenance, runtime evidence and remaining limitations in a
+release record, then port only that scope. Keep public metadata, Workshop ID,
+preview, existing assets and unmodified gameplay intact.
+
+The [v0.1.56-alpha record](releases/v0.1.56-alpha.md) selects the requested
+portrait and narrow target guards. It excludes TEST repositioning (confirmed
+crash #14), shove/reload changes, durability, aiming, audio, and explosions.
 
 ## Compatibility rule
 
@@ -40,6 +54,10 @@ Omit `-Upload` to build/splice/test without publishing, or use
 6. Upload with the public-upload safeguard explicitly enabled.
 7. Verify the Workshop title, visibility, description, ManifestID, and content
    size after Steam finishes processing the update.
+8. Record the built source commit, validation results, exact content handle,
+   byte size and package hashes. Only then mark publication verified and create
+   a matching lightweight tag and GitHub prerelease at the publication-record
+   commit. Do not move an existing released tag.
 
 The pipeline fails when a channel points at the other channel's Workshop item,
 which prevents an experimental build from overwriting the public alpha.

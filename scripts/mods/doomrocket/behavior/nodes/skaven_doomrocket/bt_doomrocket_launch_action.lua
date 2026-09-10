@@ -37,14 +37,20 @@ BTDoomrocketLaunchAction.enter = function (self, unit, blackboard, t)
 	local new_target, node_name, old_target_visible = PerceptionUtils.pick_ratling_gun_target(unit, blackboard)
 	local target_unit = new_target or data.target_unit
 
-	local target_position = Vector3Box(Unit.local_position(target_unit, 0))
-	self.target_position = target_position
-
 	blackboard.action = action
 	data.target_unit = target_unit
 	data.target_node_name = node_name or data.target_node_name
+	data.invalid_target = nil
+	data.attack_notified = nil
+	blackboard.attack_pattern_data = data
 
-	if not Unit.alive(target_unit) then
+	-- Career changes can leave a deleted target in the saved attack data for one
+	-- AI tick. Reject it before any position/node access, including on entry.
+	if not target_unit or not Unit.alive(target_unit) then
+		data.target_unit = nil
+		data.invalid_target = true
+		printf("[doomrocket:COMBAT] phase=launch_rejected reason=no_live_target")
+
 		return
 	end
 
@@ -67,7 +73,6 @@ BTDoomrocketLaunchAction.enter = function (self, unit, blackboard, t)
 	end
 
 	blackboard.first_shots_fired = true
-	blackboard.attack_pattern_data = data
 
 	blackboard.navigation_extension:set_enabled(false)
 	blackboard.locomotion_extension:set_wanted_velocity(Vector3.zero())
@@ -77,6 +82,7 @@ BTDoomrocketLaunchAction.enter = function (self, unit, blackboard, t)
 	self:_start_align_towards_target(unit, blackboard, data, target_unit, t)
 	blackboard.locomotion_extension:use_lerp_rotation(false)
 	self:_notify_attacking(unit, target_unit)
+	data.attack_notified = true
 end
 
 BTDoomrocketLaunchAction._create_nav_obstacles = function (self, unit, target_unit, nav_world, action)
@@ -132,7 +138,11 @@ BTDoomrocketLaunchAction.leave = function (self, unit, blackboard, t, reason, de
 		data.arc_of_sight_nav_obstacle = nil
 	end
 
-	self:_notify_no_longer_attacking(unit, data.target_unit)
+	if data.attack_notified then
+		-- Keep the public build's matching end even if the victim was destroyed.
+		self:_notify_no_longer_attacking(unit, data.target_unit)
+		data.attack_notified = nil
+	end
 
 	if not destroy then
 		blackboard.locomotion_extension:use_lerp_rotation(true)
@@ -145,9 +155,14 @@ end
 local unit_alive = Unit.alive
 BTDoomrocketLaunchAction.run = function (self, unit, blackboard, t, dt)
 	local data = blackboard.attack_pattern_data
+
+	if not data or data.invalid_target then
+		return "failed"
+	end
+
 	local target_unit = data.target_unit
 
-	if not unit_alive(target_unit) then
+	if not target_unit or not unit_alive(target_unit) then
 		return "done"
 	end
 

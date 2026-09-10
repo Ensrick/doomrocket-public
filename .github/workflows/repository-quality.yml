@@ -46,6 +46,12 @@ jobs:
       - name: Run weapon source and contract tests
         run: python tools/tests/test_warlock_weapon_pipeline.py
 
+      - name: Run portrait provenance and atlas tests
+        run: python tools/tests/test_doomrocket_portrait_pipeline.py
+
+      - name: Run public target-safety Lua tests
+        run: python tools/tests/test_public_target_safety.py
+
       - name: Run ragdoll regression tests
         shell: pwsh
         run: ./tools/tests/Test-WarlockRagdollRegressions.ps1

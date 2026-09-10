@@ -54,7 +54,7 @@ Run both source mutations and the production contract:
 Analyze a runtime capture separately:
 
 ```powershell
-py -3 ./tools/analyze_warlock_ragdoll_log.py C:\path\to\console.log --expected-version 0.1.55-alpha
+py -3 ./tools/analyze_warlock_ragdoll_log.py C:\path\to\console.log --expected-version 0.1.56-alpha
 ```
 
 The strict command above remains the release gate. A separate, deliberately

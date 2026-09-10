@@ -1,18 +1,29 @@
 # Public-alpha tester checklist
 
 This is the short checklist for Workshop item `3771657344`. It is suitable for
-copying into Discord.
+copying into Discord. **Wait for verified v0.1.56-alpha publication before
+testing this update.** An older loaded banner does not test the candidate.
 
 ```text
-WARPROCKET BOMBARDIER v0.1.55-alpha — QUICK TEST
+WARPROCKET BOMBARDIER v0.1.56-alpha — QUICK TEST
 
 Setup
-[ ] Fully restart Steam and Vermintide after the Workshop update.
+[ ] Let Steam finish the Workshop update, then restart Vermintide.
 [ ] Launch the Modded Realm.
 [ ] Load Vermintide Mod Framework above Warprocket Bombardier.
 [ ] Enable the public alpha only; disable the TEST build.
-[ ] Confirm the log contains: [doomrocket:LOAD] v0.1.55-alpha
+[ ] Confirm the log contains: [doomrocket:LOAD] v0.1.56-alpha
 [ ] Record whether you are host, remote client, or solo.
+
+New portrait
+[ ] Kill a Bombardier and check the new small Warlock Engineer kill-feed icon.
+[ ] Verify the red warhead, green highlights, native size and normal orientation.
+[ ] Compare the host and remote-client kill feeds; attach a screenshot of each.
+
+Career-change safety (controlled Keep test)
+[ ] With one living Bombardier, switch careers repeatedly during aim/fire/reload.
+[ ] Repeat with one dead and one living Bombardier; no crash or stuck attack.
+[ ] After the switch, the living enemy acquires a valid target and fires normally.
 
 Enemy and weapon
 [ ] Living model and textures look correct; no hidden ratling model is visible.
@@ -35,4 +46,6 @@ Evidence
 ```
 
 Do not treat a static test or a clean log as proof of correct visuals. Report
-what was visibly observed and attach the matching log.
+what was visibly observed and attach the matching log. This public build does
+not contain the TEST kick/reposition, armor/health, ballistic-aim, custom-audio,
+or explosion changes; do not expect those features in this checklist.

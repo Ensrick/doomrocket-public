@@ -10,9 +10,16 @@ Public release source for the Warprocket Bombardier enemy mod for Vermintide 2.
 - [Clearly marked TEST Workshop build](https://steamcommunity.com/sharedfiles/filedetails/?id=3794172730)
 - [Current project status](PROJECT_STATUS.md)
 
-The public alpha is deliberately based on the runtime-accepted `v0.1.55`
-baseline. Experimental survivability, shove, ballistic-aim, and custom-audio
-work remains isolated on the development line until it passes in-game testing.
+The public alpha preserves the runtime-accepted `v0.1.55` model, weapon and
+host-ragdoll baseline. The [v0.1.56-alpha candidate](docs/releases/v0.1.56-alpha.md)
+adds Crunch's kill-feed portrait and narrow nil/deleted-target guards. Workshop
+publication is pending; [project status](PROJECT_STATUS.md) distinguishes the
+candidate from the live build.
+
+Experimental survivability, shove/reload changes, repositioning, ballistic aim,
+and custom audio remain on the development line. The TEST relocation crash is
+not included in this public candidate. New portrait visuals and public-build
+career-switch checks still need matching in-game results.
 
 Do not enable the public and TEST Workshop builds simultaneously. Every player
 in a lobby must install and enable the same version.
@@ -37,8 +44,10 @@ and select the form that matches what happened:
 - **Balance or design feedback** for difficulty, damage, health, behavior, or
   feature suggestions.
 
-Before filing, restart the game after the Workshop update, verify the log says
-`[doomrocket:LOAD] v0.1.55-alpha`, and make sure the TEST build is disabled.
+Before filing, restart the game after the Workshop update, copy the actual
+`[doomrocket:LOAD]` banner, and make sure the TEST build is disabled. The new
+candidate's banner is `[doomrocket:LOAD] v0.1.56-alpha`; do not report an older
+build as a test of these changes.
 Attach the complete console log from
 `%APPDATA%\Fatshark\Vermintide 2\console_logs\`; do not paste the entire file
 into the issue body. See [Bug-reporting instructions](docs/BUG_REPORTING.md) for

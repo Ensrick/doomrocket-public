@@ -37,7 +37,7 @@ Choose the newest `console-YYYY-MM-DD-HH.MM.SS-<guid>.log` file from the session
 where the problem happened. Verify that it contains:
 
 ```text
-[doomrocket:LOAD] v0.1.55-alpha
+[doomrocket:LOAD] v0.1.56-alpha
 ```
 
 Attach the complete file to the form; do not paste the entire log into the

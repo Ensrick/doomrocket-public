@@ -18,8 +18,8 @@ Assert-True ($itemConfig -match '(?m)^published_id\s*=\s*3771657344L;\s*$') `
     "public-alpha config must target Workshop item 3771657344"
 Assert-True ($itemConfig -match '(?m)^visibility\s*=\s*"public";\s*$') `
     "public-alpha Workshop item must remain public"
-Assert-True ($itemConfig -match '(?m)^title\s*=\s*"Warprocket Bombardier v0\.1\.55-alpha";\s*$') `
-    "public title must be exactly Warprocket Bombardier v0.1.55-alpha"
+Assert-True ($itemConfig -match '(?m)^title\s*=\s*"Warprocket Bombardier v0\.1\.56-alpha";\s*$') `
+    "public title must be exactly Warprocket Bombardier v0.1.56-alpha"
 Assert-True ($itemConfig -notmatch '(?im)^title\s*=.*(?:TEST|Currently Unstable|\-dev)') `
     "public title must not contain TEST, Currently Unstable, or -dev"
 
@@ -56,6 +56,14 @@ $weaponRegression = Join-Path $PSScriptRoot 'tests\test_warlock_weapon_pipeline.
 & py -3 $weaponRegression
 if ($LASTEXITCODE -ne 0) {
     [void]$failures.Add("weapon source/runtime regression suite failed (exit $LASTEXITCODE)")
+}
+
+# Run source and compiled portrait checks plus executable target-safety tests.
+foreach ($regression in @('test_doomrocket_portrait_pipeline.py', 'test_public_target_safety.py')) {
+    & py -3 (Join-Path $PSScriptRoot "tests\$regression")
+    if ($LASTEXITCODE -ne 0) {
+        [void]$failures.Add("$regression failed (exit $LASTEXITCODE)")
+    }
 }
 
 # Every animation referenced by the state machine must exist as clip + recipe

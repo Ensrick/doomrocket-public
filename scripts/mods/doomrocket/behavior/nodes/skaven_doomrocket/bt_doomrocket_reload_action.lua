@@ -13,7 +13,7 @@ BTDoomrocketReloadAction.enter = function (self, unit, blackboard, t)
 	local data = blackboard.attack_pattern_data or {}
 	local target_unit, node_name, old_target_visible = PerceptionUtils.pick_ratling_gun_target(unit, blackboard)
 
-	if target_unit then
+	if target_unit and Unit.alive(target_unit) then
 		data.target_unit = target_unit
 		data.target_node_name = node_name
 		data.last_known_target_position = data.last_known_target_position or Vector3Box()
@@ -27,6 +27,10 @@ BTDoomrocketReloadAction.enter = function (self, unit, blackboard, t)
 		data.target_obscured = false
 		data.target_check = t + 0.05 + Math.random() * 0.025
 	else
+		if data.target_unit and not Unit.alive(data.target_unit) then
+			data.target_unit = nil
+		end
+
 		data.abort_windup = true
 		blackboard.attack_pattern_data = data
 		blackboard.action = action
@@ -63,7 +67,7 @@ end
 BTDoomrocketReloadAction._update_target = function (self, unit, blackboard, data, t)
 	local target_unit, node_name, old_target_visible = PerceptionUtils.pick_ratling_gun_target(unit, blackboard)
 
-	if target_unit then
+	if target_unit and Unit.alive(target_unit) then
 		data.target_unit = target_unit
 		data.target_node_name = node_name
 		local unit_position = Unit.world_position(unit, Unit.node(unit, "c_spine"))
@@ -73,7 +77,7 @@ BTDoomrocketReloadAction._update_target = function (self, unit, blackboard, data
 		data.last_known_unit_position:store(unit_position)
 
 		data.target_obscured = false
-	elseif old_target_visible then
+	elseif old_target_visible and data.target_unit and Unit.alive(data.target_unit) then
 		target_unit = data.target_unit
 		local unit_position = Unit.world_position(unit, Unit.node(unit, "c_spine"))
 		local target_position = Unit.world_position(target_unit, Unit.node(target_unit, node_name))
@@ -83,6 +87,11 @@ BTDoomrocketReloadAction._update_target = function (self, unit, blackboard, data
 
 		data.target_obscured = false
 	else
+		-- Ordinary occlusion still needs the live saved target for launch fallback.
+		if data.target_unit and not Unit.alive(data.target_unit) then
+			data.target_unit = nil
+		end
+
 		data.target_obscured = true
 	end
 
