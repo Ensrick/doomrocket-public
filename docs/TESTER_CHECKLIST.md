@@ -1,8 +1,9 @@
 # Public-alpha tester checklist
 
 This is the short checklist for Workshop item `3771657344`. It is suitable for
-copying into Discord. **Wait for verified v0.1.56-alpha publication before
-testing this update.** An older loaded banner does not test the candidate.
+copying into Discord. **v0.1.56-alpha was published and verified September 10,
+2026.** Let Steam update and confirm the loaded banner; an older build does
+not test this update.
 
 ```text
 WARPROCKET BOMBARDIER v0.1.56-alpha — QUICK TEST

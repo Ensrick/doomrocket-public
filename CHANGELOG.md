@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.56-alpha — candidate, publication pending
+## v0.1.56-alpha — 2026-09-10
 
 - Promotes Crunch's requested 60x70 Warlock Engineer kill-feed portrait, with a
   deterministic atlas builder and asset verification.
@@ -9,6 +9,10 @@
 - Preserves the accepted v0.1.55 body/weapon assets and ragdoll baseline.
 - Excludes the TEST relocation crash and all newer combat, balance, custom-audio,
   ballistic-aim, and explosion experiments.
+
+Published and verified on public Workshop item `3771657344` at 05:05:35 UTC:
+content handle `1428725673095257484`, exactly 92,596,852 bytes. Clean build,
+material splice, full public package pipeline, and source CI pass.
 
 Portrait visuals, the narrow public target-safety port, and remote-client
 behavior still need matching runtime checks. See the

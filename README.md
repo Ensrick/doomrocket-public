@@ -11,14 +11,13 @@ Public release source for the Warprocket Bombardier enemy mod for Vermintide 2.
 - [Current project status](PROJECT_STATUS.md)
 
 The public alpha preserves the runtime-accepted `v0.1.55` model, weapon and
-host-ragdoll baseline. The [v0.1.56-alpha candidate](docs/releases/v0.1.56-alpha.md)
-adds Crunch's kill-feed portrait and narrow nil/deleted-target guards. Workshop
-publication is pending; [project status](PROJECT_STATUS.md) distinguishes the
-candidate from the live build.
+host-ragdoll baseline. [v0.1.56-alpha](docs/releases/v0.1.56-alpha.md) is published
+and verified on the public Workshop item as of September 10, 2026. It adds
+Crunch's kill-feed portrait and narrow nil/deleted-target guards.
 
 Experimental survivability, shove/reload changes, repositioning, ballistic aim,
 and custom audio remain on the development line. The TEST relocation crash is
-not included in this public candidate. New portrait visuals and public-build
+not included in this public release. New portrait visuals and public-build
 career-switch checks still need matching in-game results.
 
 Do not enable the public and TEST Workshop builds simultaneously. Every player
@@ -46,7 +45,7 @@ and select the form that matches what happened:
 
 Before filing, restart the game after the Workshop update, copy the actual
 `[doomrocket:LOAD]` banner, and make sure the TEST build is disabled. The new
-candidate's banner is `[doomrocket:LOAD] v0.1.56-alpha`; do not report an older
+release's banner is `[doomrocket:LOAD] v0.1.56-alpha`; do not report an older
 build as a test of these changes.
 Attach the complete console log from
 `%APPDATA%\Fatshark\Vermintide 2\console_logs\`; do not paste the entire file

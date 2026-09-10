@@ -1,14 +1,14 @@
 # Project status
 
-Snapshot updated 2026-09-09. GitHub Issues is the live work queue; this page is
+Snapshot updated 2026-09-10. GitHub Issues is the live work queue; this page is
 the short re-entry map, not a second backlog.
 
 ## One-minute re-entry
 
 | Question | Answer |
 | --- | --- |
-| What can ordinary players use? | [Public alpha v0.1.55-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344) |
-| What is prepared for public publication? | [v0.1.56-alpha candidate](docs/releases/v0.1.56-alpha.md); not yet verified on Workshop |
+| What can ordinary players use? | [Public alpha v0.1.56-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), published and verified |
+| Where is the promotion evidence? | [v0.1.56-alpha release record](docs/releases/v0.1.56-alpha.md) |
 | What is the TEST status? | v0.1.65-dev has the [confirmed relocation crash #14](https://github.com/Ensrick/doomrocket-private/issues/14); do not promote it |
 | Where are public reports filed? | [Public issue chooser](https://github.com/Ensrick/doomrocket-public/issues/new/choose) |
 | Where is experimental work tracked? | [Development issues](https://github.com/Ensrick/doomrocket-private/issues) |
@@ -16,10 +16,18 @@ the short re-entry map, not a second backlog.
 
 ## Current state
 
-**Workshop remains v0.1.55-alpha until the v0.1.56 upload is independently
-verified.** The candidate preserves the accepted body/weapon assets, launcher
+**v0.1.56-alpha is published and verified**, September 10 at 05:05:35 UTC.
+Steam confirms public item `3771657344`, title `Warprocket Bombardier
+v0.1.56-alpha`, content handle `1428725673095257484`, and exactly 92,596,852
+bytes. The description matches the source configuration. The release preserves
+the accepted body/weapon assets, launcher
 hand/back placement, loaded-warhead death drop, host ragdoll, and existing
 public combat/audio behavior.
+
+Built source `3c08e46` passed the clean build, verified material splice, full
+public package pipeline, and [source CI](https://github.com/Ensrick/doomrocket-public/actions/runs/34439363632).
+The same validated package uploaded successfully after a graceful Steam
+restart. TEST v0.1.65 and its content handle `8123257090222204359` are unchanged.
 
 The deliberate promotion contains only Crunch's requested 60x70 kill-feed
 portrait and nil/deleted-target guards in launch/reload. The target-safety
@@ -31,7 +39,7 @@ See the [promotion and release record](docs/releases/v0.1.56-alpha.md).
 No reposition, shove, reload-preservation, Stormvermin durability, ballistic-aim,
 custom-audio, or projectile/explosion changes are promoted. TEST v0.1.65's
 missing `reposition` network action ID crashes after a kick ([#14](https://github.com/Ensrick/doomrocket-private/issues/14));
-that action is absent from this public candidate. The development explosion
+that action is absent from this public release. The development explosion
 matrix remains open under [#7](https://github.com/Ensrick/doomrocket-private/issues/7)
 and [#8](https://github.com/Ensrick/doomrocket-private/issues/8).
 
