@@ -104,7 +104,7 @@ def main() -> int:
 
     if visibility != "public":
         failures.append("Workshop visibility must remain public")
-    if title != ("Warprocket Bombardier v" + version if args.channel == "public" else "Warprocket Bombardier TEST v" + version):
+    if title != ("Warlock Engineer v" + version if args.channel == "public" else "Warlock Engineer TEST v" + version):
         failures.append("Workshop title and Lua MOD_VERSION are out of sync")
 
     if args.channel == "public":

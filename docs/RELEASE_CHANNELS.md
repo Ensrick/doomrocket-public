@@ -1,13 +1,13 @@
 # Release channels
 
-Warprocket Bombardier has two public release channels. They intentionally use
+Warlock Engineer has two public release channels. They intentionally use
 separate repositories, worktrees, Workshop items, titles, preview images, and
 published-ID guards.
 
 | Channel | GitHub | Branch | Steam Workshop | Version/title | Purpose |
 | --- | --- | --- | --- | --- | --- |
-| Public alpha | `Ensrick/doomrocket-public` | `main` | `3771657344` | `Warprocket Bombardier v<version>-alpha` | Accepted baseline plus deliberate, documented promotions |
-| Development TEST | `Ensrick/doomrocket-private` | `private-copy` | `3794172730` | `Warprocket Bombardier TEST v<version>-dev` | Experimental combat, movement, ballistic aiming, and custom audio |
+| Public alpha | `Ensrick/doomrocket-public` | `main` | `3771657344` | `Warlock Engineer v<version>-alpha` | Accepted baseline plus deliberate, documented promotions |
+| Development TEST | `Ensrick/doomrocket-private` | `private-copy` | `3794172730` | `Warlock Engineer TEST v<version>-dev` | Experimental combat, movement, ballistic aiming, and custom audio |
 
 Both GitHub repositories and both Workshop items are public. The TEST listing
 must begin with a prominent development/instability warning and use the black

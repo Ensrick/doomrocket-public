@@ -6,12 +6,12 @@ copying into Discord. **v0.1.56-alpha was published and verified September 10,
 not test this update.
 
 ```text
-WARPROCKET BOMBARDIER v0.1.56-alpha — QUICK TEST
+WARLOCK ENGINEER v0.1.56-alpha — QUICK TEST
 
 Setup
 [ ] Let Steam finish the Workshop update, then restart Vermintide.
 [ ] Launch the Modded Realm.
-[ ] Load Vermintide Mod Framework above Warprocket Bombardier.
+[ ] Load Vermintide Mod Framework above Warlock Engineer.
 [ ] Enable the public alpha only; disable the TEST build.
 [ ] Confirm the log contains: [doomrocket:LOAD] v0.1.56-alpha
 [ ] Record whether you are host, remote client, or solo.

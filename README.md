@@ -1,8 +1,8 @@
-# Warprocket Bombardier — public alpha
+# Warlock Engineer — public alpha
 
 [![Repository quality](https://github.com/Ensrick/doomrocket-public/actions/workflows/repository-quality.yml/badge.svg)](https://github.com/Ensrick/doomrocket-public/actions/workflows/repository-quality.yml)
 
-Public release source for the Warprocket Bombardier enemy mod for Vermintide 2.
+Public release source for Warlock Engineer, the mod that adds the Warprocket Bombardier enemy to Vermintide 2.
 
 - [Public-alpha Workshop build](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344)
 - [Report a public-build bug](https://github.com/Ensrick/doomrocket-public/issues/new/choose)
@@ -26,9 +26,9 @@ in a lobby must install and enable the same version.
 ## Installation
 
 1. Subscribe to [Vermintide Mod Framework](https://steamcommunity.com/sharedfiles/filedetails/?id=1369573612).
-2. Subscribe to the [Warprocket Bombardier public alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344).
+2. Subscribe to the [Warlock Engineer public alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344).
 3. In the Vermintide mod launcher, enable both and place Vermintide Mod
-   Framework above Warprocket Bombardier in the load order.
+   Framework above Warlock Engineer in the load order.
 4. Launch the **Modded Realm**. This mod is not sanctioned for the Official
    Realm.
 
