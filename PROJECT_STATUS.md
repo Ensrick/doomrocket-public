@@ -16,13 +16,19 @@ the short re-entry map, not a second backlog.
 
 ## Current state
 
-**v0.1.56-alpha is published and verified**, September 10 at 05:05:35 UTC.
-Steam confirms public item `3771657344`, title `Warprocket Bombardier
-v0.1.56-alpha`, content handle `1428725673095257484`, and exactly 92,596,852
-bytes. The description matches the source configuration. The release preserves
+**v0.1.56-alpha was published and verified**, September 10 at 05:05:35 UTC.
+At publication, Steam confirmed public item `3771657344` under its original
+title `Warprocket Bombardier v0.1.56-alpha`, content handle
+`1428725673095257484`, and exactly 92,596,852 bytes. The description then
+matched the source configuration. The release preserves
 the accepted body/weapon assets, launcher
 hand/back placement, loaded-warhead death drop, host ragdoll, and existing
 public combat/audio behavior.
+
+As of September 25, Steam lists the same item as `Warlock Engineer
+v0.1.56-alpha`, with the same content handle and byte size. The source title
+and load-order wording are aligned here for a future publication; this source
+edit does not publish a new package or change the in-game enemy's name.
 
 Built source `3c08e46` passed the clean build, verified material splice, full
 public package pipeline, and [source CI](https://github.com/Ensrick/doomrocket-public/actions/runs/34439363632).

@@ -8,7 +8,7 @@ apply to human maintainers and AI coding agents.
 - Canonical GitHub repository: `Ensrick/doomrocket-public`, remote `public`.
 - Local branch: `public-alpha`; it publishes to remote branch `main`.
 - Steam Workshop item: `3771657344`.
-- Required title shape: `Warprocket Bombardier v<version>-alpha`.
+- Required title shape: `Warlock Engineer v<version>-alpha`.
 - Development repository/worktree: `Ensrick/doomrocket-private` at
   `C:\Users\danjo\source\repos\doomrocket`.
 - Development Workshop item: `3794172730`, visibly labeled `TEST`.

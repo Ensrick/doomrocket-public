@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $expectedBranch = 'public-alpha'
 $expectedWorkshopId = '3771657344'
-$expectedTitlePrefix = 'Warprocket Bombardier v'
+$expectedTitlePrefix = 'Warlock Engineer v'
 
 function Assert-ExitCode {
     param([string]$Step)

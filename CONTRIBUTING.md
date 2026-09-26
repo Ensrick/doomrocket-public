@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Warprocket Bombardier. Keep contributions focused so
+Thanks for helping improve Warlock Engineer. Keep contributions focused so
 they are easy to test and safe to promote.
 
 ## Players and testers
