@@ -2,6 +2,8 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../ship/publication-snapshot.ps1')
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$attributeHash = (Get-FileHash -LiteralPath (Join-Path $repoRoot '.gitattributes') -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($attributeHash -cne '9d8317fa72c8dd3cb59dca48d1043c2eaecebdf063b29536957121400d42e3f4') { throw 'Checkout attributes differ from the byte-identical working VMB policy. Do not add unsupported attributes.' }
 $entry = Get-VtBuildReceiptInventoryEntry -RepoRoot $repoRoot -Mod doomrocket
 $ignoreProblems = @(Get-VtBundleAuthorityIgnoreStateErrors -Mod doomrocket -Authority ([string]$entry.BundleAuthority) -GitIgnoreText ([IO.File]::ReadAllText((Join-Path $repoRoot '.gitignore'))))
 if ($ignoreProblems.Count) { throw "Repository bundle authority: $($ignoreProblems -join '; ')" }

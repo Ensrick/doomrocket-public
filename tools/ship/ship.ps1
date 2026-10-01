@@ -78,6 +78,8 @@ try {
     $null = Assert-VmbLauncherPublicationCapability -LauncherExecutableLease $launcherLease -WorkingDirectory $repoRoot -RequireReceiptAuthority
     & py -3 tools/check_repository.py --channel $profile.Channel
     Assert-Native 'Repository preflight'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File tools/tests/Test-WarlockPublicationLayout.ps1
+    Assert-Native 'Standalone publication layout and checkout-policy preflight'
     $inventoryEntry = Get-VtBuildReceiptInventoryEntry -RepoRoot $repoRoot -Mod $Mod
     $ignoreProblems = @(Get-VtBundleAuthorityIgnoreStateErrors -Mod $Mod -Authority ([string]$inventoryEntry.BundleAuthority) -GitIgnoreText ([IO.File]::ReadAllText((Join-Path $repoRoot '.gitignore'))))
     if ($ignoreProblems.Count) { throw "Bundle authority preflight failed: $($ignoreProblems -join '; ')" }

@@ -1,6 +1,17 @@
 # Changelog
 
+## v0.1.58-alpha — 2026-09-30
+
+- Publishes the supplied Warlock Engineer / Doom Rocket thumbnail using the
+  byte-identical checkout policy accepted by the working VMB 0.6.4 process.
+- Checks the copied checkout policy and receipt ignore contract before a build.
+- Preserves the accepted public-alpha gameplay, models, animation and audio;
+  no experimental TEST behavior is promoted.
+
 ## v0.1.57-alpha — 2026-09-30
+
+GitHub candidate only: VMB refused an unsupported checkout attribute before
+calling the Steam uploader. It never reached Workshop; superseded by v0.1.58-alpha.
 
 - Uses the maintainer-supplied Warlock Engineer / Doom Rocket Workshop thumbnail,
   copied unchanged from Thumbnail_02.png (768×768 PNG).

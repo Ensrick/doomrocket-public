@@ -1,6 +1,6 @@
 # Preserve the actual compiler input bytes in standalone build receipts.
 # This also preserves the byte-identical copied upstream workflow snapshot.
-* -text whitespace=cr-at-eol
+* -text
 
 # The deterministic Wwise builder emits LF. Keep its text products byte-stable
 # on Windows checkouts so clean-room reproduction remains a real byte check.
