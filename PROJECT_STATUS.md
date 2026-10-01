@@ -1,20 +1,40 @@
 # Project status
 
-Snapshot updated 2026-09-10. GitHub Issues is the live work queue; this page is
+Snapshot updated 2026-09-30. GitHub Issues is the live work queue; this page is
 the short re-entry map, not a second backlog.
 
 ## One-minute re-entry
 
 | Question | Answer |
 | --- | --- |
-| What can ordinary players use? | [Public alpha v0.1.56-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), published and verified |
-| Where is the promotion evidence? | [v0.1.56-alpha release record](docs/releases/v0.1.56-alpha.md) |
-| What is the TEST status? | v0.1.65-dev has the [confirmed relocation crash #14](https://github.com/Ensrick/doomrocket-private/issues/14); do not promote it |
+| What can ordinary players use? | [Public alpha v0.1.58-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), published and verified with the new thumbnail |
+| Where is the release evidence? | [v0.1.58-alpha publication record](docs/releases/v0.1.58-alpha.md); the accepted gameplay baseline remains [v0.1.56-alpha](docs/releases/v0.1.56-alpha.md) |
+| What is the TEST status? | Steam still serves v0.1.79-dev on its separate item; see the [development status](https://github.com/Ensrick/doomrocket-private/blob/private-copy/PROJECT_STATUS.md). No TEST behavior is promoted by this thumbnail release. |
 | Where are public reports filed? | [Public issue chooser](https://github.com/Ensrick/doomrocket-public/issues/new/choose) |
 | Where is experimental work tracked? | [Development issues](https://github.com/Ensrick/doomrocket-private/issues) |
 | Can both Workshop items be enabled? | No. They share an internal mod identity; use exactly one. |
 
 ## Current state
+
+**v0.1.58-alpha is published and verified**, September 30 at 23:56 Chicago
+time (October 1 at 04:56 UTC). The Workshop thumbnail is the supplied
+`Thumbnail_02.png`, unchanged. Its served image hash matches the source.
+Steam recorded a new-content upload and `finish: OK`, content handle
+`6070835758371159345`, and exactly 92,292,389 bytes.
+
+Publication used the working standalone VMB 0.6.4 / Tweaker transaction:
+claim, clean BuildOnly, native-material splice, package tests, committed
+receipt, reviewed PR, exact merged-commit hosted QA, and verified upload.
+The public repository now owns that process. The retired direct-upload wrapper
+has been replaced. Receipt ignore state and the exact supported checkout policy
+are checked before compilation and in hosted QA. See the
+[publication record](docs/releases/v0.1.58-alpha.md).
+
+Gameplay, models, animation and audio retain the accepted public baseline.
+No game installation, deployment, or new in-game acceptance is claimed.
+The v0.1.57 GitHub candidate never reached Workshop; its tag is preserved.
+
+## Historical v0.1.56-alpha baseline
 
 **v0.1.56-alpha was published and verified**, September 10 at 05:05:35 UTC.
 At publication, Steam confirmed public item `3771657344` under its original
