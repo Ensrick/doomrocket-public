@@ -1,0 +1,161 @@
+# Portable Maintainer Setup
+
+This document owns machine-local repository configuration. Build, deploy, and
+upload doctrine is owned by [PROJECT_STANDARDS.md section 6.6](../PROJECT_STANDARDS.md#66-ship-doctrine-keyed-off-the-mod_version-suffix-canonical-2026-07-01);
+launcher implementation guidance lives in the separately maintained
+VMBLauncher repository.
+
+## Repository-only work
+
+Documentation edits and the PowerShell QA suite do not require Steam, the
+Vermintide 2 SDK, VMB, or `.vmbrc`. From a clean clone:
+
+```powershell
+pwsh -NoProfile -File qa/run_all.ps1 -Quick -SkipLua
+```
+
+Install the repository hooks after cloning when contributing changes:
+
+```powershell
+pwsh -NoProfile -File tools/install-hooks.ps1
+```
+
+## Local VMB configuration
+
+VMB reads one `.vmbrc`; it does not merge a tracked base with a per-user
+override. VMBLauncher also requires the file to be named `.vmbrc` in its
+configured ProjectRoot. Consequently the real file is ignored and the
+portable template is tracked:
+
+```powershell
+Copy-Item .vmbrc.example .vmbrc
+```
+
+The example assumes the VMB repository is a sibling directory named `vmb` and
+uses `../vmb/.template-vmf`. Change only the ignored `.vmbrc` if VMB lives
+elsewhere. The default Steam and SDK paths are fallback values; because
+`use_fallback` is `false`, VMB normally discovers Steam rather than forcing
+those paths.
+
+Do not commit `.vmbrc`. Confirm before committing:
+
+```powershell
+git check-ignore .vmbrc
+```
+
+### Shipping from a clean linked worktree
+
+Git linked worktrees intentionally omit both ignored dependencies: `.vmbrc`
+and the separately maintained `tools/vmb-launcher/` checkout. The canonical
+`tools/ship/ship.ps1` wrapper resolves those machine-local dependencies without
+changing which checkout supplies mod source.
+
+Launcher resolution is deterministic: `VT2_SHIP_VMB_LAUNCHER` when explicitly
+set, then the invoking worktree, the ProjectRoot recorded in VMBLauncher
+settings, and the primary git worktree. An explicitly configured missing or
+empty launcher is a hard failure; the wrapper does not silently ignore a bad
+override. Launcher configuration isolation follows the section 6.6 owner
+contract: each launcher child receives the same transaction-private `--config`
+bound to the invoking worktree.
+
+If the invoking worktree already has `.vmbrc`, that file wins and is never
+overwritten. Otherwise the wrapper checks `VT2_SHIP_VMBRC`, the configured
+ProjectRoot, the primary git worktree, and finally the invoking checkout's
+tracked `.vmbrc.example`. Before accepting any candidate, it parses the JSON
+and proves that `mods_dir`, interpreted from the invoking worktree, resolves to
+the invoking worktree itself. A config that points at `mods`, another checkout,
+or an absolute foreign source root fails before VMBLauncher runs. The accepted
+bytes are written only to the required `<ProjectRoot>/.vmbrc` name for the
+launcher action and removed in `finally` after both success and failure.
+
+These fallbacks supply tooling and configuration only. The pre-existing ship
+identity gate still requires VMBLauncher `info` to resolve the invoking mod
+directory and match its git commit, `MOD_VERSION`, and `published_id` before
+the wrapper can build or deploy. Publication is a separate internal launcher
+verb and remains available only to the canonical `ship.ps1` transaction; direct
+`all`, `upload`, and GUI publication cannot construct its authority.
+
+## VMBLauncher settings
+
+VMBLauncher stores machine-specific paths and deployment targets outside this
+repository at `%APPDATA%\VMBLauncher\settings.json`. Set its ProjectRoot to the
+usual clone directory containing `.vmbrc`. Use `VMBLauncher.exe doctor` to
+validate VMB, SDK, Steam, Workshop, and project paths.
+
+### SDK prerequisites and exceptional Steam recovery
+
+The SDK and the installed game are separate dependencies. The SDK supplies the
+compiler and uploader; some optional compiled-resource checks also require the
+game's `bundle/compression.dictionary`. If that file is absent, report the
+affected check as skipped, not passed. An old game directory by itself does not
+prove the game is installed. Neither an uninstall nor a hidden library entry
+alone establishes the cause of an uploader failure.
+
+A signed-in client and green `doctor` do not prove native SDK initialization.
+For `ugc_tool.exe+0x4169` / null-interface crashes, compare the actual Steam and
+publisher/uploader Windows user and privilege contexts. First cross-reference
+recent successful uploads, including relevant sibling-project records; do not
+turn an old failed attempt into a permanent or project-wide Steam blocker.
+The September 8 Doomrocket publication record documented this same crash and
+recovery: graceful `steam.exe -shutdown`, normal non-elevated relaunch, matching
+contexts and completed login, then successful upload of unchanged packages.
+See [#1548's evidence](https://github.com/Ensrick/vermintide-2-tweaker/issues/1548#issuecomment-5647856379).
+
+Only perform a Steam restart with explicit user permission, when it will not
+interrupt their activity. Do not use desktop input or steal focus during their
+gameplay. Do not elevate the publisher, force-kill Steam, edit registry/SDK
+files, or substitute a sibling project's older launcher/publication route.
+Recheck the relevant context and claim validity, then follow this repository's
+canonical ship transaction. A stale claim still needs a fresh broker allocation,
+not a timestamp renewal. This is exceptional initialization recovery, not a
+routine test-refresh requirement: PC-A normally tests the hash-verified local
+deploy without restarting Steam.
+
+### Worktree configuration and remote targets
+
+For shipping from another worktree, do not retarget or restore this shared
+settings file. Canonical ship uses it as discovery input, then creates a
+separate private configuration for the exact invoking checkout. The private
+file, not the shared settings file, is removed during cleanup. See
+[PROJECT_STANDARDS.md section 6.6](../PROJECT_STANDARDS.md#66-ship-doctrine-keyed-off-the-mod_version-suffix-canonical-2026-07-01)
+for the single transaction owner, identity validation, cleanup/recovery, and
+publication-receipt requirements (issues #647/#1180). This setup guide does
+not define an alternative binding or restoration procedure.
+
+Remote hosts are also local settings. Configure `RemoteDeployTargets` in the
+launcher settings and SSH aliases in `~/.ssh/config`; never place hostnames,
+credentials, keys, or per-machine Workshop paths in tracked repository files.
+An empty or disabled target list is valid for contributors without a second
+test machine. Existing maintainer targets remain in local launcher settings
+and are unaffected by this repository change.
+
+## Maintainer release topology
+
+The canonical merge-first release transaction is owned by
+`PROJECT_STANDARDS.md` section 6.6. This setup document does not redefine its
+claim, `-BuildOnly`, protected merge, or final clean-default-HEAD phases.
+`ship.ps1` invokes the ignored `.vmbrc` indirectly through VMBLauncher and
+performs configured local and remote deployments without opening interactive
+windows. Use `-NoRemote` only for the exception defined by the owner doctrine;
+do not copy bundles into Workshop folders or invoke VMB, direct launcher
+publication, GUI publication, the SDK uploader, SSH, or SCP directly.
+
+When migrating an existing checkout, preserve the old `.vmbrc` before updating,
+then restore it as the ignored local file. Existing `%APPDATA%` launcher settings
+and remote targets require no migration.
+
+### Receipt-local deployment rollout and builder identity
+
+All current inventory rows remain `tracked`; the receipt-local branch is dormant
+until a separately reviewed authority migration. The approved side-by-side
+launcher 0.6.2 does not replace the existing default 0.6.1 installation. A
+schema-3 build receipt binds the exact builder informational version: pending
+0.6.1 claims/artifacts must finish their existing publications before any
+mutating 0.6.2 operation can introduce a newer-format local deployment journal.
+Do not reinterpret or rewrite those receipts, mix launchers across one ship, or
+replace the global default to bypass a builder mismatch. After serialization,
+a new claimed build may select the approved side-by-side executable through the
+existing explicit launcher override, then follow the normal BuildOnly/review/
+merge/publication sequence. Source-only integration requires none of those
+mutations. See PROJECT_STANDARDS section 6.6 for the separate hosted
+`local_deploy` receipt and mandatory `-NoRemote` policy.

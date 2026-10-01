@@ -1,0 +1,3000 @@
+# tools/ship/ship.ps1
+#
+# CANONICAL two-phase RELEASE transaction for one VT2 mod:
+#   (1) -BuildOnly generates the artifact committed with source and reviewed;
+#   (2) after merge, the clean live default HEAD deploys, records authorization,
+#       uploads, and verifies the exact reviewed bytes
+#   + GitHub-issue status labeling (verify-fix / diagnostics-armed, with
+#     coop-required only after solo verification is exhausted; issue #326)
+#   + pinned CURRENT LIVE TEST card version-surface refresh via
+#     tools/ship/refresh-cards.ps1 (issue #1102).
+#
+# Prefer this over hand-chaining VMBLauncher verbs and
+# `tools\publish-release\publish-release.ps1` separately. It runs both, then
+# PROVES the deploy and upload actually transferred (the two steps that silently
+# lie) so a release can't be quietly skipped.
+#
+# Usage:
+#   .\tools\ship\ship.ps1 -Mod general_tweaker_dev
+#   .\tools\ship\ship.ps1 -Mod chaos_wastes_tweaker -AllowPublic        # public Workshop item
+#   .\tools\ship\ship.ps1 -Mod gui_tweaker_dev -NoRemote                # skip the PC-B push
+#   .\tools\ship\ship.ps1 -Mod gui_tweaker_dev -BuildOnly               # hidden, serialized bundle build
+#
+# WHY THIS SCRIPT EXISTS -- hard-won facts encoded below (do not "simplify" them away):
+#
+#  * VMBLauncher remains the only sanctioned build/deploy/upload boundary, but
+#    this wrapper invokes its verbs separately so authority-selected output
+#    parity and hosted authorization can be checked before upload. `deploy` is a
+#    hash-verified LOCAL copy of `<mod>\bundleV2\*.mod_bundle` + the `.mod` into
+#    `...\steamapps\workshop\content\552500\<published_id>\`. `upload` is the
+#    ugc_tool push to the Steam Workshop SERVER. Public mods require
+#    `--allow-public`; `--no-remote` skips the remote (PC-B) deploy target.
+#
+#  * ugc_tool prints "Upload finished" and exits 0 EVEN WHEN NOTHING TRANSFERRED.
+#    "Upload finished" tells you nothing. The SOURCE OF TRUTH is
+#    `C:\Program Files (x86)\Steam\logs\workshop_log.txt`:
+#    Require one exact start -> Uploaded/NoChange -> finish OK transaction from
+#    bytes appended to the same retained file after the launcher boundary.
+#    Uploaded followed by Timeout is NOT success. NoChange has no ManifestID
+#    and remains subject to the existing receipt/deploy policy below.
+#
+#  * `published_id` lives in `<mod>\itemV2.cfg` as `published_id = <N>L;`.
+#
+#  * Existing Workshop items do not require a local subscription to publish.
+#    When the real content folder is absent, ship enters a receipt-gated
+#    publication-only lane: no local/remote deploy is attempted, VMBLauncher
+#    still proves the exact commit/bundle/staging bytes, and workshop_log must
+#    report a complete successful transaction for the exact id.
+#    Never create the missing real Workshop folder by hand (issue #1376).
+#
+#  * Step 3 releases ONLY the shipped mod to GitHub (issues #436/#493):
+#    `publish-release.ps1 -Mods <mod> -SkipBuild`. Sibling zips and manifest
+#    entries carry over from the existing release, so a sibling's mid-edit WIP
+#    can neither fail this ship nor publish a mislabeled asset. The release-tag
+#    probe never assumes the day's tag exists, and it must stay behind
+#    Invoke-NativeProbe (issue #489: native stderr + redirection kills PS 5.1).
+#
+#  * TEST REFRESH (user ruling 2026-07-13): the author tests the hash-verified
+#    local deploy directly and does not need to restart Steam. Volunteer testers
+#    refresh through the dev collection by unsubscribing/resubscribing. In both
+#    cases the newest console log's [<id>:LOAD] version is the final authority.
+#
+# Every step fails loudly (red message + non-zero exit) on the first problem.
+#
+# NOTE: comments + strings are ASCII only -- PowerShell parses .ps1 as Windows-1252
+# by default and mangles em-dashes / box-drawing glyphs (memory:
+# feedback_ps5_getcontent_utf8). Use '-' and '=' for separators, never Unicode.
+
+[CmdletBinding()]
+param(
+    [string]$Mod,
+    [switch]$AllowPublic,
+    [switch]$NoRemote,
+    [switch]$SkipGitHub,
+    [switch]$BuildOnly,
+    [switch]$NoClaim,
+    [string]$EmergencyPublicationReason,
+    [switch]$SelfTest
+)
+
+$ErrorActionPreference = 'Stop'
+$lifecycleMethodPolicy = Join-Path $PSScriptRoot '..\verify\lifecycle_method_policy.ps1'
+if (-not (Test-Path -LiteralPath $lifecycleMethodPolicy -PathType Leaf)) {
+    throw "Shared lifecycle method policy not found: $lifecycleMethodPolicy"
+}
+. $lifecycleMethodPolicy
+
+$loadTagResolutionHelpers = Join-Path $PSScriptRoot 'load-tag-resolution.ps1'
+if (-not (Test-Path -LiteralPath $loadTagResolutionHelpers -PathType Leaf)) {
+    throw "Shared LOAD-tag resolver not found: $loadTagResolutionHelpers"
+}
+. $loadTagResolutionHelpers
+
+$launcherPathHelpers = Join-Path $PSScriptRoot '..\vmb-launcher-path.ps1'
+if (-not (Test-Path -LiteralPath $launcherPathHelpers -PathType Leaf)) {
+    throw "Shared VMBLauncher path helpers not found: $launcherPathHelpers"
+}
+. $launcherPathHelpers
+
+$releaseIdentityHelpers = Join-Path $PSScriptRoot 'release-identity.ps1'
+if (-not (Test-Path -LiteralPath $releaseIdentityHelpers -PathType Leaf)) {
+    throw "Shared release identity policy not found: $releaseIdentityHelpers"
+}
+. $releaseIdentityHelpers
+
+$publicationAuthorizationHelpers = Join-Path $PSScriptRoot 'publication-authorization.ps1'
+if (-not (Test-Path -LiteralPath $publicationAuthorizationHelpers -PathType Leaf)) {
+    throw "Publication authorization policy not found: $publicationAuthorizationHelpers"
+}
+. $publicationAuthorizationHelpers
+
+$publicationReceiptHelpers = Join-Path $PSScriptRoot 'publication-receipt.ps1'
+if (-not (Test-Path -LiteralPath $publicationReceiptHelpers -PathType Leaf)) {
+    throw "Publication receipt policy not found: $publicationReceiptHelpers"
+}
+. $publicationReceiptHelpers
+
+. (Join-Path $PSScriptRoot 'local-deployment-receipt.ps1')
+. (Join-Path $PSScriptRoot 'workshop-upload-evidence.ps1')
+
+$buildOutputNormalizationHelpers = Join-Path $PSScriptRoot 'build-output-normalization.ps1'
+if (-not (Test-Path -LiteralPath $buildOutputNormalizationHelpers -PathType Leaf)) {
+    throw "Build-output normalization policy not found: $buildOutputNormalizationHelpers"
+}
+. $buildOutputNormalizationHelpers
+
+$transactionLeaseHelpers = Join-Path $PSScriptRoot 'transaction-lease.ps1'
+if (-not (Test-Path -LiteralPath $transactionLeaseHelpers -PathType Leaf)) {
+    throw "Machine transaction lease helpers not found: $transactionLeaseHelpers"
+}
+. $transactionLeaseHelpers
+
+$buildReceiptHelpers = Join-Path $PSScriptRoot 'build-receipt.ps1'
+if (-not (Test-Path -LiteralPath $buildReceiptHelpers -PathType Leaf)) {
+    throw "Build receipt policy not found: $buildReceiptHelpers"
+}
+. $buildReceiptHelpers
+
+$publicationSnapshotHelpers = Join-Path $PSScriptRoot 'publication-snapshot.ps1'
+if (-not (Test-Path -LiteralPath $publicationSnapshotHelpers -PathType Leaf)) {
+    throw "Publication snapshot policy not found: $publicationSnapshotHelpers"
+}
+. $publicationSnapshotHelpers
+
+function Fail {
+    param([string]$Message)
+    Write-Host ""
+    Write-Host "SHIP FAILED: $Message" -ForegroundColor Red
+    # Write-Error for a proper error record, but don't let it throw a second time
+    # (global ErrorActionPreference is Stop); the explicit exit is the real signal.
+    Write-Error $Message -ErrorAction Continue
+    exit 1
+}
+
+function Assert-WtHistorySourceFreshness {
+    param(
+        [Parameter(Mandatory)][string]$Mod,
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$Phase
+    )
+    if ($Mod -ne 'weapon_tweaker' -and $Mod -ne 'weapon_tweaker_dev') { return }
+    $gate = Join-Path $RepoRoot 'qa\check_wt_history_source_freshness.ps1'
+    if (-not (Test-Path -LiteralPath $gate -PathType Leaf)) {
+        Fail "Weapon-history source freshness gate not found: $gate"
+    }
+    & $gate -RequireRemoteFresh -Quiet
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Canonical weapon-history source moved or could not be verified at $Phase; no later release mutation was attempted."
+    }
+    Write-Host "  OK -- canonical weapon-history source ref/tip is fresh ($Phase)." -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
+# Pure helpers, hoisted so `-SelfTest` exercises the SAME code the live ship
+# runs: the native-probe guard (issue #489) + step 6 labeling (issue #326).
+# ---------------------------------------------------------------------------
+
+# Native-command probe whose FAILURE is an expected branch (issue #489).
+# Under stream redirection (agent-driven ships run `ship.ps1 ... 2>&1` / `*>`),
+# Windows PowerShell 5.1 wraps native stderr into ErrorRecords, and with the
+# script-global $ErrorActionPreference = 'Stop' the FIRST stderr line (e.g.
+# `gh release view` on a tag that does not exist yet -- "release not found")
+# becomes a TERMINATING error that kills the ship mid-run. pwsh 7.2+ does not
+# have the trap, but ships must survive both hosts. So: scope EAP to Continue
+# for the call, discard stderr, and let the EXIT CODE be the only signal.
+# Never assume a release tag exists -- probe with this and branch on the code.
+function Invoke-NativeProbe {
+    param([scriptblock]$Command)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Command 2>$null | Out-Null } finally { $ErrorActionPreference = $prev }
+    return $LASTEXITCODE
+}
+
+function Invoke-NativeCapture {
+    param([scriptblock]$Command)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = @(& $Command 2>&1 | ForEach-Object { $_.ToString() })
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $prev
+    }
+    return [pscustomobject]@{ ExitCode = $code; Lines = $lines }
+}
+
+function ConvertFrom-NativeJson {
+    param([object]$Capture, [string]$Description)
+    if ($Capture.ExitCode -ne 0) {
+        throw "$Description query failed (exit $($Capture.ExitCode)): $($Capture.Lines -join ' | ')"
+    }
+    try {
+        return (($Capture.Lines -join "`n") | ConvertFrom-Json)
+    }
+    catch {
+        throw "$Description returned invalid JSON: $($_.Exception.Message)"
+    }
+}
+
+function Compare-BundleBlobMaps {
+    param([hashtable]$Tracked, [hashtable]$Built)
+    $problems = @()
+    foreach ($name in $Tracked.Keys) {
+        if (-not $Built.ContainsKey($name)) {
+            $problems += "tracked artifact missing after build: $name"
+        }
+        elseif ([string]$Tracked[$name] -ne [string]$Built[$name]) {
+            $problems += "built bytes differ from HEAD: $name"
+        }
+    }
+    foreach ($name in $Built.Keys) {
+        if (-not $Tracked.ContainsKey($name)) {
+            $problems += "untracked artifact produced by build: $name"
+        }
+    }
+    return @{ Ok = ($problems.Count -eq 0); Problems = $problems }
+}
+
+function Get-ShipDeploymentPolicy {
+    param(
+        [Parameter(Mandatory = $true)][string]$PublishedId,
+        [Parameter(Mandatory = $true)][bool]$DeployDirectoryExists,
+        [ValidateSet('tracked', 'receipt')][string]$BundleAuthority = 'tracked',
+        [switch]$NoRemote,
+        [switch]$BuildOnly
+    )
+
+    if ($PublishedId -notmatch '^\d+$') {
+        throw "Invalid Workshop published_id '$PublishedId'."
+    }
+    if ($PublishedId -eq '0') {
+        return [pscustomobject]@{
+            Mode = 'bootstrap'
+            ShouldDeploy = $false
+            RemoteDeploy = $false
+            Reason = 'Steam has not assigned the first Workshop identity'
+        }
+    }
+    if ($BundleAuthority -ceq 'receipt') {
+        if ($DeployDirectoryExists -and -not $BuildOnly) {
+            if (-not $NoRemote) {
+                throw 'Receipt-authority local deployment requires explicit -NoRemote; remote exact-set deployment is unsupported.'
+            }
+            return [pscustomobject]@{
+                Mode = 'subscribed'
+                ShouldDeploy = $true
+                RemoteDeploy = $false
+                RequiresDeploymentReceipt = $true
+                Reason = 'local subscription uses hosted receipt-bound exact-set deployment'
+            }
+        }
+        return [pscustomobject]@{
+            Mode = 'publication-only'
+            ShouldDeploy = $false
+            RemoteDeploy = $false
+            Reason = if ($BuildOnly) { 'artifact-only build does not deploy' } else { 'receipt authority has no existing local subscription to deploy' }
+        }
+    }
+    if (-not $DeployDirectoryExists) {
+        return [pscustomobject]@{
+            Mode = 'publication-only'
+            ShouldDeploy = $false
+            RemoteDeploy = $false
+            Reason = 'author is not locally subscribed to the existing Workshop item'
+        }
+    }
+    return [pscustomobject]@{
+        Mode = 'subscribed'
+        ShouldDeploy = $true
+        RemoteDeploy = (-not [bool]$NoRemote)
+        Reason = 'local Workshop subscription is present'
+    }
+}
+
+function Test-ShipUploadEvidencePolicy {
+    param(
+        [Parameter(Mandatory = $true)][string]$UploadStatus,
+        [Parameter(Mandatory = $true)][string]$DeploymentMode,
+        [Parameter(Mandatory = $true)][bool]$DeployVerified,
+        [Parameter(Mandatory = $true)][bool]$PublicationReceiptAccepted
+    )
+
+    $problems = @()
+    if (-not $PublicationReceiptAccepted) {
+        $problems += 'VMBLauncher did not accept the exact publication receipt and staged bytes'
+    }
+    switch ($UploadStatus.ToUpperInvariant()) {
+        'UPLOADED' { }
+        'NOCHANGE' {
+            if ($DeploymentMode -eq 'subscribed' -and -not $DeployVerified) {
+                $problems += 'subscribed no-content-change requires a byte-verified local deploy'
+            }
+            elseif ($DeploymentMode -eq 'bootstrap') {
+                $problems += 'first-upload bootstrap cannot be proven by no-content-change'
+            }
+            elseif ($DeploymentMode -notin @('subscribed', 'publication-only')) {
+                $problems += "unsupported deployment mode '$DeploymentMode'"
+            }
+        }
+        default {
+            $problems += "no accepted fresh Workshop result ('$UploadStatus')"
+        }
+    }
+    return [pscustomobject]@{ Ok = ($problems.Count -eq 0); Problems = $problems }
+}
+
+function Test-TrackedBundleParity {
+    param([string]$RepoRoot, [string]$Mod)
+    $bundleDir = Join-Path (Join-Path $RepoRoot $Mod) 'bundleV2'
+    if (-not (Test-Path -LiteralPath $bundleDir -PathType Container)) {
+        return @{ Ok = $false; Problems = @("bundleV2 missing after build: $bundleDir") }
+    }
+
+    $prefix = "$Mod/bundleV2/"
+    $tree = Invoke-NativeCapture { & git -C $RepoRoot ls-tree -r --name-only HEAD -- "$Mod/bundleV2" }
+    if ($tree.ExitCode -ne 0) {
+        return @{ Ok = $false; Problems = @("cannot read tracked bundle tree: $($tree.Lines -join ' | ')") }
+    }
+    $tracked = @{}
+    foreach ($repoPath in @($tree.Lines | Where-Object { $_ -and $_.StartsWith($prefix) })) {
+        $rel = $repoPath.Substring($prefix.Length)
+        $blob = Invoke-NativeCapture { & git -C $RepoRoot rev-parse "HEAD:$repoPath" }
+        if ($blob.ExitCode -ne 0 -or $blob.Lines.Count -eq 0) {
+            return @{ Ok = $false; Problems = @("cannot resolve tracked blob for $repoPath") }
+        }
+        $tracked[$rel] = ([string]$blob.Lines[-1]).Trim().ToLowerInvariant()
+    }
+
+    $built = @{}
+    foreach ($file in @(Get-ChildItem -LiteralPath $bundleDir -Recurse -File)) {
+        $rel = $file.FullName.Substring($bundleDir.Length).TrimStart('\', '/').Replace('\', '/')
+        $blob = Invoke-NativeCapture { & git -C $RepoRoot hash-object -- $file.FullName }
+        if ($blob.ExitCode -ne 0 -or $blob.Lines.Count -eq 0) {
+            return @{ Ok = $false; Problems = @("cannot hash built artifact $rel") }
+        }
+        $built[$rel] = ([string]$blob.Lines[-1]).Trim().ToLowerInvariant()
+    }
+    return Compare-BundleBlobMaps -Tracked $tracked -Built $built
+}
+
+# Issue #829: a console-subsystem executable launched from a desktop agent process can ask
+# Windows to allocate a visible console even when the executable selected its
+# own headless code path. Start VMBLauncher with explicit no-window process
+# flags and redirected streams so `ship.ps1` remains genuinely unattended in
+# terminals, CI, and desktop automation. Output is replayed after exit; the
+# launcher's exit code remains authoritative.
+function Invoke-ShipLauncherNoWindow {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherExecutableLease,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [switch]$ReplayOutput
+    )
+
+    $workingRoot = if (-not [string]::IsNullOrWhiteSpace([string]$repoRoot)) {
+        $repoRoot
+    } else {
+        (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    }
+    return Invoke-VmbLauncherProcess `
+        -Lease $LauncherExecutableLease `
+        -ArgumentList $ArgumentList `
+        -WorkingDirectory $workingRoot `
+        -ReplayOutput:$ReplayOutput
+}
+
+function Test-ShipPathEqual {
+    param([string]$Left, [string]$Right)
+    if ([string]::IsNullOrWhiteSpace($Left) -or [string]::IsNullOrWhiteSpace($Right)) { return $false }
+    $leftFull = [System.IO.Path]::GetFullPath($Left).TrimEnd('\', '/')
+    $rightFull = [System.IO.Path]::GetFullPath($Right).TrimEnd('\', '/')
+    return [string]::Equals($leftFull, $rightFull, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+# Return the primary checkout that owns the shared git common directory. This
+# is dependency discovery only: source is never read or built from this root.
+# A linked worktree's common directory is <primary>\.git.
+function Get-ShipPrimaryWorktreeRoot {
+    param([string]$RepoRoot)
+    return Get-VmbLauncherPrimaryWorktreeRoot -RepoRoot $RepoRoot
+}
+
+function Get-ShipConfiguredProjectRoot {
+    param([string]$SettingsPath)
+    return Get-VmbLauncherConfiguredProjectRoot -SettingsPath $SettingsPath
+}
+
+function Resolve-ShipLauncherPath {
+    param(
+        [string]$RepoRoot,
+        [string]$ExplicitPath,
+        [string]$ConfiguredProjectRoot,
+        [string]$PrimaryWorktreeRoot
+    )
+
+    return Resolve-ApprovedVmbLauncherPath `
+        -RepoRoot $RepoRoot `
+        -ConfiguredProjectRoot $ConfiguredProjectRoot `
+        -PrimaryWorktreeRoot $PrimaryWorktreeRoot `
+        -EnvironmentPath $ExplicitPath
+}
+
+function Test-ShipVmbRcForRoot {
+    param([string]$VmbRcPath, [string]$RepoRoot)
+    if (-not (Test-Path -LiteralPath $VmbRcPath -PathType Leaf)) {
+        return [pscustomobject]@{ Ok = $false; Message = "missing .vmbrc: $VmbRcPath" }
+    }
+    try {
+        $config = [System.IO.File]::ReadAllText($VmbRcPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{ Ok = $false; Message = "invalid JSON in $VmbRcPath ($($_.Exception.Message))" }
+    }
+    $modsDirRaw = if ($null -ne $config) { [string]$config.mods_dir } else { '' }
+    if ([string]::IsNullOrWhiteSpace($modsDirRaw)) {
+        return [pscustomobject]@{ Ok = $false; Message = "$VmbRcPath has no non-empty mods_dir" }
+    }
+    $resolvedModsDir = if ([System.IO.Path]::IsPathRooted($modsDirRaw)) {
+        [System.IO.Path]::GetFullPath($modsDirRaw)
+    } else {
+        [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $modsDirRaw))
+    }
+    if (-not (Test-ShipPathEqual $resolvedModsDir $RepoRoot)) {
+        return [pscustomobject]@{
+            Ok = $false
+            Message = "unsafe mods_dir '$modsDirRaw' resolves to '$resolvedModsDir', not invoking root '$RepoRoot'"
+        }
+    }
+    return [pscustomobject]@{ Ok = $true; Message = "mods_dir resolves to invoking root" }
+}
+
+function Resolve-ShipVmbRcPath {
+    param(
+        [string]$RepoRoot,
+        [string]$ExplicitPath,
+        [string]$ConfiguredProjectRoot,
+        [string]$PrimaryWorktreeRoot
+    )
+
+    $localPath = Join-Path $RepoRoot '.vmbrc'
+    if (Test-Path -LiteralPath $localPath -PathType Leaf) {
+        $check = Test-ShipVmbRcForRoot -VmbRcPath $localPath -RepoRoot $RepoRoot
+        if (-not $check.Ok) { throw "Invoking worktree .vmbrc is unusable: $($check.Message)" }
+        return [pscustomobject]@{ Path = $localPath; Source = 'invoking worktree'; NeedsStaging = $false }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        $explicitFull = [System.IO.Path]::GetFullPath($ExplicitPath)
+        $check = Test-ShipVmbRcForRoot -VmbRcPath $explicitFull -RepoRoot $RepoRoot
+        if (-not $check.Ok) { throw "VT2_SHIP_VMBRC is unusable: $($check.Message)" }
+        return [pscustomobject]@{ Path = $explicitFull; Source = 'VT2_SHIP_VMBRC'; NeedsStaging = $true }
+    }
+
+    $candidates = @(
+        [pscustomobject]@{ Path = $(if ($ConfiguredProjectRoot) { Join-Path $ConfiguredProjectRoot '.vmbrc' } else { $null }); Source = 'VMBLauncher configured ProjectRoot' },
+        [pscustomobject]@{ Path = $(if ($PrimaryWorktreeRoot) { Join-Path $PrimaryWorktreeRoot '.vmbrc' } else { $null }); Source = 'primary git worktree' },
+        [pscustomobject]@{ Path = (Join-Path $RepoRoot '.vmbrc.example'); Source = 'tracked portable template' }
+    )
+    $seen = @{}
+    $rejected = @()
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace([string]$candidate.Path)) { continue }
+        $full = [System.IO.Path]::GetFullPath([string]$candidate.Path)
+        $key = $full.ToLowerInvariant()
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        $check = Test-ShipVmbRcForRoot -VmbRcPath $full -RepoRoot $RepoRoot
+        if ($check.Ok) {
+            return [pscustomobject]@{ Path = $full; Source = $candidate.Source; NeedsStaging = $true }
+        }
+        $rejected += $check.Message
+    }
+    throw ("No approved .vmbrc can bind mods_dir to the invoking worktree. " + ($rejected -join '; ') +
+           ". Set VT2_SHIP_VMBRC to a valid config whose mods_dir resolves to this checkout.")
+}
+
+# VMB requires the exact filename <ProjectRoot>\.vmbrc. For a clean linked
+# worktree, stage only the machine-local config bytes for the launcher window,
+# then remove them in finally. Existing local config is never overwritten.
+function Invoke-WithShipVmbRc {
+    param(
+        [string]$RepoRoot,
+        [pscustomobject]$Resolution,
+        [scriptblock]$Action
+    )
+    $target = Join-Path $RepoRoot '.vmbrc'
+    if (-not $Resolution.NeedsStaging) {
+        & $Action
+        return
+    }
+    if (Test-Path -LiteralPath $target) {
+        throw "Refusing to overwrite existing worktree config: $target"
+    }
+    $created = $false
+    try {
+        [System.IO.File]::WriteAllBytes($target, [System.IO.File]::ReadAllBytes($Resolution.Path))
+        $created = $true
+        $check = Test-ShipVmbRcForRoot -VmbRcPath $target -RepoRoot $RepoRoot
+        if (-not $check.Ok) { throw "Staged .vmbrc validation failed: $($check.Message)" }
+        & $Action
+    }
+    finally {
+        if ($created -and (Test-Path -LiteralPath $target)) {
+            Remove-Item -LiteralPath $target
+            if (Test-Path -LiteralPath $target) {
+                throw "CRITICAL: could not remove transient worktree config: $target"
+            }
+        }
+    }
+}
+
+# Create one ship-private launcher config from the machine settings after the
+# machine transaction is held. The global settings file is discovery input
+# only: canonical ship never rewrites it, so a hard kill cannot strand a
+# temporary ProjectRoot or race a GUI save (issue #1180).
+function Assert-ShipMachineTransactionOwned {
+    $recordPath = $env:VMBLAUNCHER_TRANSACTION_RECORD_PATH
+    $leaseId = $env:VMBLAUNCHER_TRANSACTION_LEASE_ID
+    if ([string]::IsNullOrWhiteSpace($recordPath) -or
+        [string]::IsNullOrWhiteSpace($leaseId) -or
+        -not (Test-Path -LiteralPath $recordPath -PathType Leaf)) {
+        throw 'Ship-private settings require an authenticated machine transaction record.'
+    }
+    try { $record = [IO.File]::ReadAllText($recordPath, [Text.Encoding]::UTF8) | ConvertFrom-Json }
+    catch { throw "Ship-private settings cannot authenticate the transaction record: $($_.Exception.Message)" }
+    $current = Get-Process -Id $PID
+    try {
+        $startTicks = $current.StartTime.ToUniversalTime().Ticks
+        $sessionId = $current.SessionId
+    }
+    finally { $current.Dispose() }
+    $processTreeJobName = [VmbTransactionProcessTreeGuard]::Ensure()
+    if ("$($record.schema)" -ne '2' -or
+        "$($record.lease_id)" -ne "$leaseId" -or
+        "$($record.owner_pid)" -ne "$PID" -or
+        "$($record.owner_start_utc_ticks)" -ne "$startTicks" -or
+        "$($record.session_id)" -ne "$sessionId" -or
+        "$($record.process_tree_job_name)" -ne "$processTreeJobName") {
+        throw 'Ship-private settings transaction identity does not match its durable owner record.'
+    }
+}
+
+function Remove-StaleShipPrivateLauncherSettings {
+    param([int]$MaximumCandidates = 256)
+
+    Assert-ShipMachineTransactionOwned
+    $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\', '/')
+    $candidates = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'vmblauncher-ship-*.json' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc |
+        Select-Object -First $MaximumCandidates)
+    foreach ($candidate in $candidates) {
+        if ($candidate.Name -cnotmatch '^vmblauncher-ship-(\d+)-(\d+)-([0-9a-f]{32})\.json$') { continue }
+        $ownerPid = 0
+        $ownerStartTicks = [long]0
+        if (-not [int]::TryParse($matches[1], [ref]$ownerPid) -or
+            -not [long]::TryParse($matches[2], [ref]$ownerStartTicks)) { continue }
+        $exactOwnerLive = $false
+        try {
+            $ownerProcess = Get-Process -Id $ownerPid -ErrorAction Stop
+            try {
+                $exactOwnerLive = ($ownerProcess.StartTime.ToUniversalTime().Ticks -eq $ownerStartTicks)
+            }
+            finally { $ownerProcess.Dispose() }
+        }
+        catch { $exactOwnerLive = $false }
+        if (-not $exactOwnerLive) {
+            Remove-Item -LiteralPath $candidate.FullName -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function New-ShipPrivateLauncherSettings {
+    param(
+        [string]$SourceSettingsPath,
+        [string]$ProjectRoot
+    )
+
+    Assert-ShipMachineTransactionOwned
+    if (-not (Test-Path -LiteralPath $SourceSettingsPath -PathType Leaf)) {
+        throw "VMBLauncher settings not found: $SourceSettingsPath"
+    }
+    Remove-StaleShipPrivateLauncherSettings
+    $sourceText = [System.Text.Encoding]::UTF8.GetString(
+        [System.IO.File]::ReadAllBytes($SourceSettingsPath))
+    if ($sourceText.Length -gt 0 -and $sourceText[0] -eq [char]0xFEFF) {
+        $sourceText = $sourceText.Substring(1)
+    }
+    try { $settings = $sourceText | ConvertFrom-Json }
+    catch { throw "VMBLauncher settings are not valid JSON: $SourceSettingsPath ($($_.Exception.Message))" }
+    if ($null -eq $settings) { throw "VMBLauncher settings decoded to null: $SourceSettingsPath" }
+    $root = [System.IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\', '/')
+    if ($settings.PSObject.Properties.Name -contains 'ProjectRoot') {
+        $settings.ProjectRoot = $root
+    }
+    else {
+        $settings | Add-Member -NotePropertyName ProjectRoot -NotePropertyValue $root
+    }
+    $json = $settings | ConvertTo-Json -Depth 20
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($json)
+    $currentProcess = Get-Process -Id $PID
+    try { $ownerStartTicks = $currentProcess.StartTime.ToUniversalTime().Ticks }
+    finally { $currentProcess.Dispose() }
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) `
+        ("vmblauncher-ship-{0}-{1}-{2}.json" -f $PID, $ownerStartTicks, [guid]::NewGuid().ToString('N'))
+    $stream = New-Object System.IO.FileStream(
+        $path,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::None,
+        4096,
+        [System.IO.FileOptions]::WriteThrough)
+    try {
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    }
+    catch {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    finally { $stream.Dispose() }
+    $roundTrip = ([System.IO.File]::ReadAllText(
+        $path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json).ProjectRoot
+    $actual = if ($roundTrip) {
+        [System.IO.Path]::GetFullPath([string]$roundTrip).TrimEnd('\', '/')
+    } else { '' }
+    if (-not [string]::Equals($actual, $root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        throw "Private VMBLauncher ProjectRoot binding failed: expected '$root', read back '$actual'."
+    }
+    return $path
+}
+
+# Pure identity comparison used by the live preflight and offline fixtures.
+# Path, version, source commit, and Workshop id must all describe the invoking
+# checkout before VMBLauncher is allowed to build/deploy/upload (issue #647).
+function Test-ShipIdentityValues {
+    param(
+        [string]$ExpectedModDir,
+        [string]$ResolvedModDir,
+        [string]$ExpectedVersion,
+        [string]$ResolvedVersion,
+        [string]$ExpectedCommit,
+        [string]$ResolvedCommit,
+        [string]$ExpectedPublishedId,
+        [string]$ResolvedPublishedId
+    )
+
+    $expectedPath = [System.IO.Path]::GetFullPath($ExpectedModDir).TrimEnd('\', '/')
+    $resolvedPath = [System.IO.Path]::GetFullPath($ResolvedModDir).TrimEnd('\', '/')
+    if (-not [string]::Equals($expectedPath, $resolvedPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return @{ Ok = $false; Message = "root mismatch: invoking '$expectedPath', launcher resolved '$resolvedPath'" }
+    }
+    if ($ExpectedVersion -ne $ResolvedVersion) {
+        return @{ Ok = $false; Message = "version mismatch: invoking '$ExpectedVersion', launcher resolved '$ResolvedVersion'" }
+    }
+    if ($ExpectedCommit -ne $ResolvedCommit) {
+        return @{ Ok = $false; Message = "source mismatch: invoking commit '$ExpectedCommit', launcher resolved '$ResolvedCommit'" }
+    }
+    if ($ExpectedPublishedId -ne $ResolvedPublishedId) {
+        return @{ Ok = $false; Message = "published_id mismatch: invoking '$ExpectedPublishedId', launcher resolved '$ResolvedPublishedId'" }
+    }
+    return @{ Ok = $true; Message = 'bound identity matches invoking checkout' }
+}
+
+# Compare one built artifact with its deployed copy (issue #646). Steam may
+# rewrite the textual VMB descriptor from LF to CRLF after deployment. That is
+# representation-equivalent, but every other byte remains significant. Normalize
+# only CRLF pairs and only for the exact `.mod` extension; `.mod_bundle` and all
+# other artifacts retain the byte-exact SHA-256 contract.
+function Get-DescriptorComparableHash {
+    param([string]$Path)
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $normalized = New-Object byte[] $bytes.Length
+    $writeIndex = 0
+    for ($readIndex = 0; $readIndex -lt $bytes.Length; $readIndex++) {
+        if (($bytes[$readIndex] -eq 13) -and
+            (($readIndex + 1) -lt $bytes.Length) -and
+            ($bytes[$readIndex + 1] -eq 10)) {
+            continue
+        }
+        $normalized[$writeIndex] = $bytes[$readIndex]
+        $writeIndex++
+    }
+
+    if ($writeIndex -ne $normalized.Length) {
+        $trimmed = New-Object byte[] $writeIndex
+        if ($writeIndex -gt 0) {
+            [System.Buffer]::BlockCopy($normalized, 0, $trimmed, 0, $writeIndex)
+        }
+        $normalized = $trimmed
+    }
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha.ComputeHash($normalized))).Replace('-', '')
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
+
+function Test-DeployFileEquivalent {
+    param([string]$SourcePath, [string]$DeployedPath)
+
+    if ([System.IO.Path]::GetExtension($SourcePath) -ieq '.mod') {
+        return ((Get-DescriptorComparableHash -Path $SourcePath) -eq
+                (Get-DescriptorComparableHash -Path $DeployedPath))
+    }
+
+    return ((Get-FileHash -LiteralPath $SourcePath -Algorithm SHA256).Hash -eq
+            (Get-FileHash -LiteralPath $DeployedPath -Algorithm SHA256).Hash)
+}
+
+# Dev-stream = MOD_VERSION carries a release-track suffix. Only dev-stream
+# ships run explicit lifecycle-transition automation; a clean stable promotion
+# re-ships already-labeled work.
+function Test-DevStreamVersion {
+    param([string]$Version)
+    return [bool]($Version -match '-(dev|alpha|beta|rc)\b')
+}
+
+# Top `## ` entry of a newest-first CHANGELOG. Returns @{ Header; Entry } or
+# $null when the file has no version header at all.
+function Get-TopChangelogEntry {
+    param([string[]]$Lines)
+    $first = -1; $second = -1
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        if ($Lines[$i] -match '^\s*##\s+\S') {
+            if ($first -lt 0) { $first = $i } else { $second = $i; break }
+        }
+    }
+    if ($first -lt 0) { return $null }
+    $endEx = if ($second -ge 0) { $second } else { $Lines.Count }
+    return @{
+        Header = $Lines[$first].Trim()
+        Entry  = ($Lines[$first..($endEx - 1)] -join "`n")
+    }
+}
+
+# Decide what (if anything) to label from a shipped entry. Returns
+# @{ Skip; Label; Refs; Coop; CoopRequired }.
+# `Coop` is only the legacy heuristic/reminder.
+#   * loc-sweep headers are skipped: their #N refs are tag CONTEXT, not
+#     shipped work (same heuristic as qa/check_issue_status_labels.ps1).
+#   * Tooling/docs entries are never auto-labeled. The live-test labels exist
+#     only to build the user's in-game queue; repository work closes from
+#     deterministic evidence instead.
+#   * Label choice is ENTRY-level via exactly one explicit lifecycle marker;
+#     missing or mixed intent fails closed before any GitHub mutation.
+#   * `verify-fix-coop` is retired. Co-op is `verify-fix` or
+#     `diagnostics-armed` plus `coop-required`, derived from the current live
+#     test card after solo work is passed/exhausted.
+function Get-ShipLabelPlan {
+    param([string]$Header, [string]$Entry)
+    if ($Header -match '(?i)(localization|loc sweep|status-tag doctrine|menu wording|localization audit|loc audit)') {
+        return @{ Skip = 'loc-sweep'; Label = $null; Refs = @(); Coop = $false; CoopRequired = $false; RepositoryLabels = @() }
+    }
+    $repositoryLabels = if ($Header -match '(?i)\[(?:docs|documentation)\]') { @('tooling', 'documentation') }
+        elseif ($Header -match '(?i)\[tooling\]') { @('tooling') }
+        else { @() }
+    if ($repositoryLabels.Count -gt 0) {
+        return @{ Skip = 'tooling-entry'; Label = $null; Refs = @(); Coop = $false; CoopRequired = $false; RepositoryLabels = @() }
+    }
+    if ($Header -match '(?i)\[verify-fix-coop\]') {
+        return @{ Skip = 'retired-lifecycle-marker'; Label = $null; Refs = @(); Coop = $false; CoopRequired = $false; RepositoryLabels = @() }
+    }
+    $explicit = @()
+    if ($Header -match '(?i)\[not-started\]') { $explicit += 'not-started' }
+    if ($Header -match '(?i)\[verify-fix\]') { $explicit += 'verify-fix' }
+    if ($Header -match '(?i)\[(?:diagnostics-armed|diag)\]') { $explicit += 'diagnostics-armed' }
+    $explicit = @($explicit | Select-Object -Unique)
+    $coopRequired = [bool]($Header -match '(?i)\[coop-required\]')
+    $coop = [bool]($Entry -match '(?i)(host *[/+] *(1 *)?client|non-\w+ +peer|husk|hot.join|2\+? *(player|tester|people)|two player|both peers|client CTD|CTDs? +a +client|desync|wire.safe|send.queue)')
+    $numSet = @{}
+    foreach ($m in [regex]::Matches($Entry, '#(\d+)')) { $numSet[[int]$m.Groups[1].Value] = $true }
+    $refs = @($numSet.Keys | Sort-Object)
+    if ($refs.Count -eq 0) { return @{ Skip = 'no-refs'; Label = $null; Refs = @(); Coop = $coop; CoopRequired = $coopRequired; RepositoryLabels = $repositoryLabels } }
+    if ($explicit.Count -eq 0) { return @{ Skip = 'missing-lifecycle-marker'; Label = $null; Refs = $refs; Coop = $coop; CoopRequired = $coopRequired; RepositoryLabels = $repositoryLabels } }
+    if ($explicit.Count -ne 1) { return @{ Skip = 'ambiguous-lifecycle-marker'; Label = $null; Refs = $refs; Coop = $coop; CoopRequired = $coopRequired; RepositoryLabels = $repositoryLabels } }
+    $label = $explicit[0]
+    return @{ Skip = $null; Label = $label; Refs = $refs; Coop = $coop; CoopRequired = $coopRequired; RepositoryLabels = $repositoryLabels }
+}
+
+$LifecycleLabels = @('not-started', 'verify-fix', 'diagnostics-armed')
+$RetiredLifecycleLabels = @('Fixed', 'verify-fix-coop')
+
+# Return the one lifecycle label that should survive and every competing label
+# to remove in the same `gh issue edit` invocation. Retired lifecycle labels
+# are removed opportunistically. An existing coop verification is never
+# downgraded by an unmarked later ship.
+function Get-LifecycleEditPlan {
+    param([string[]]$Existing, [string]$Requested, [bool]$FailedVerificationEvidence = $false)
+    $existingVerify = if ($Existing -contains 'verify-fix') { 'verify-fix' } else { $null }
+    if ($Requested -eq 'diagnostics-armed' -and $existingVerify -and -not $FailedVerificationEvidence) {
+        return @{ Target = $existingVerify; Remove = @(); Add = $false; BlockedDowngrade = $true }
+    }
+    $target = $Requested
+    $remove = @($Existing | Where-Object {
+        (($LifecycleLabels -contains $_) -and $_ -ne $target) -or ($RetiredLifecycleLabels -contains $_)
+    } | Select-Object -Unique)
+    return @{ Target = $target; Remove = $remove; Add = -not ($Existing -contains $target); BlockedDowngrade = $false }
+}
+
+# Preserve an existing co-op routing qualifier when a later diagnostics ship
+# omits the redundant changelog marker. An unmarked diagnostics update must
+# never silently downgrade a known two-player capture to a solo playtest.
+# The qualifier is removed only when the issue leaves diagnostics entirely.
+function Get-CoopQualifierEditPlan {
+    param([string[]]$Existing, [string]$LifecycleTarget, [bool]$ExplicitlyRequired)
+    $hasExisting = $Existing -contains 'coop-required'
+    $want = $LifecycleTarget -in @('diagnostics-armed', 'verify-fix') -and $ExplicitlyRequired
+    return @{
+        Want = $want
+        Add = $want -and -not $hasExisting
+        Remove = $hasExisting -and -not $want
+    }
+}
+
+# Pure, combined issue-transition decision. This is the single pre-mutation
+# boundary used by live ship and offline fixtures: selected method, repository
+# routing, topology, downgrade evidence, lifecycle edit, and qualifier edit are
+# evaluated together so independently-correct helpers cannot compose unsafely.
+function Get-ShipIssueTransitionDecision {
+    param(
+        [string[]]$Existing,
+        [string]$Requested,
+        [bool]$CoopRequired,
+        [string[]]$RepositoryLabels,
+        $Comments,
+        [string]$Body,
+        $Authority
+    )
+
+    $effectiveLabels = @($Existing) + @($RepositoryLabels)
+    $isRepositoryOnly = Test-VtRepositoryOnlyLabels $effectiveLabels
+    if ($isRepositoryOnly) {
+        return @{ Ok = $false; Reason = 'tooling-issue-not-auto-labeled'; IsRepositoryOnly = $true }
+    }
+    if (($Existing -contains 'blocked') -and $Requested -ne 'not-started') {
+        return @{ Ok = $false; Reason = 'blocked-issue-not-ready'; IsRepositoryOnly = $false }
+    }
+
+    $readyRequested = $Requested -in @('diagnostics-armed', 'verify-fix')
+    if ($readyRequested -and -not $Authority) {
+        return @{ Ok = $false; Reason = 'live-card-authority-unavailable'; IsRepositoryOnly = $false }
+    }
+
+    $selection = Get-VtLifecycleMethodSelection -Comments $Comments -Body $Body `
+        -Authority $Authority -EnforceAuthority:$readyRequested
+    if ($readyRequested -and -not $selection.Valid) {
+        return @{ Ok = $false; Reason = 'invalid-current-live-test-card'; Selection = $selection; IsRepositoryOnly = $false }
+    }
+
+    $failedVerification = Test-VtFailedVerificationEvidence $selection.Method
+    $edit = Get-LifecycleEditPlan -Existing $Existing -Requested $Requested -FailedVerificationEvidence $failedVerification
+    if ($edit.BlockedDowngrade) {
+        return @{ Ok = $false; Reason = 'unevidenced-verify-downgrade'; Selection = $selection; Edit = $edit; IsRepositoryOnly = $isRepositoryOnly }
+    }
+
+    $target = $edit.Target
+    $methodRequiresCoop = $selection.Valid -and (Test-VtMethodRequiresCoop $selection.Method)
+
+    $coopEdit = Get-CoopQualifierEditPlan -Existing $Existing -LifecycleTarget $target -ExplicitlyRequired $methodRequiresCoop
+    return @{
+        Ok = $true
+        Reason = $null
+        Selection = $selection
+        Edit = $edit
+        CoopEdit = $coopEdit
+        IsRepositoryOnly = $isRepositoryOnly
+        MethodRequiresCoop = $methodRequiresCoop
+    }
+}
+
+. (Join-Path $PSScriptRoot 'exception-pin-finalization.ps1')
+
+# Offline self-test of the step-6 logic + the issue-#489 native-probe guard
+# (qa-script convention: exit 0 = OK, exit 2 = regression). Runnable standalone
+# (`ship.ps1 -SelfTest`) and via qa/run_selftests.ps1. Network/gh interaction
+# is NOT covered here -- that path prints every decision at live-ship time for
+# hand-correction.
+function Invoke-ShipSelfTest {
+    $script:__stpass = $true
+    function Assert($cond, $desc) {
+        $verdict = if ($cond) { 'PASS' } else { 'FAIL' }
+        $colour  = if ($cond) { 'Green' } else { 'Red' }
+        Write-Host ("  [{0}] {1}" -f $verdict, $desc) -ForegroundColor $colour
+        if (-not $cond) { $script:__stpass = $false }
+    }
+
+    Assert (Test-DevStreamVersion '0.7.225-dev')  "dev suffix ships labels (0.7.225-dev)"
+    Assert (Test-DevStreamVersion '0.2.1-beta')   "beta suffix ships labels (0.2.1-beta)"
+    Assert (-not (Test-DevStreamVersion '1.0.0')) "clean stable version does NOT auto-label (1.0.0)"
+    Assert (-not (Test-DevStreamVersion '(unknown)')) "unknown version does NOT auto-label"
+
+    $authSha = '0123456789abcdef0123456789abcdef01234567'
+    $authPulls = @([pscustomobject]@{
+        number = 724
+        merged_at = '2026-07-26T00:00:00Z'
+        merge_commit_sha = $authSha
+        base = [pscustomobject]@{ ref = 'master' }
+    })
+    $authChecks = @([pscustomobject]@{
+        name = 'qa-gate'
+        head_sha = $authSha
+        status = 'completed'
+        conclusion = 'success'
+        completed_at = '2026-07-26T00:05:00Z'
+        html_url = 'https://example.invalid/check/724'
+    })
+    $authOk = Test-PublicationAuthorizationSnapshot -SourceCommit $authSha -DefaultBranch master -DefaultBranchCommit $authSha -PullRequests $authPulls -CheckRuns $authChecks
+    Assert ($authOk.Ok -and $authOk.Evidence.mode -eq 'hosted_qa') "exact default-head merge with hosted qa-gate is publication-authorized"
+    $trackerPage = [pscustomobject]@{ check_runs = @(1..30 | ForEach-Object {
+        [pscustomobject]@{ name = 'tracker-guard'; head_sha = $authSha; status = 'completed'; conclusion = 'success'; completed_at = '2026-07-26T00:06:00Z' }
+    }) }
+    $qaPage = [pscustomobject]@{ check_runs = $authChecks }
+    $pagedChecks = Merge-PublicationCheckRunPages -Pages @($trackerPage, $qaPage)
+    Assert ($pagedChecks.Count -eq 31 -and $pagedChecks[-1].name -eq 'qa-gate') "publication authorization flattens qa-gate beyond the first 30 check runs (#1109)"
+    Assert ((Test-PublicationAuthorizationSnapshot -SourceCommit $authSha -DefaultBranch master -DefaultBranchCommit $authSha -PullRequests $authPulls -CheckRuns $pagedChecks).Ok) "paginated qa-gate remains publication-authorized (#1109)"
+    Assert (-not (Test-PublicationAuthorizationSnapshot -SourceCommit $authSha -DefaultBranch master -DefaultBranchCommit ('f' * 40) -PullRequests $authPulls -CheckRuns $authChecks).Ok) "pre-merge/non-default-head source is rejected"
+    $badQa = @([pscustomobject]@{ name = 'qa-gate'; head_sha = $authSha; status = 'completed'; conclusion = 'failure' })
+    Assert (-not (Test-PublicationAuthorizationSnapshot -SourceCommit $authSha -DefaultBranch master -DefaultBranchCommit $authSha -PullRequests $authPulls -CheckRuns $badQa).Ok) "failed hosted qa-gate is rejected"
+    $matchingEvidence = Test-PublicationEvidenceMatchesLive -CallerEvidence $authOk.Evidence -LiveEvidence $authOk.Evidence
+    Assert $matchingEvidence.Ok "caller authorization correlation matches independently queried live evidence"
+    $forgedEvidence = $authOk.Evidence | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $forgedEvidence.default_branch_commit = ('f' * 40)
+    Assert (-not (Test-PublicationEvidenceMatchesLive -CallerEvidence $forgedEvidence -LiveEvidence $authOk.Evidence).Ok) "forged caller authorization JSON cannot replace independently queried live evidence"
+
+    $sameBundle = Compare-BundleBlobMaps -Tracked @{ 'fixture.mod_bundle' = 'abc'; 'fixture.mod' = 'def' } -Built @{ 'fixture.mod_bundle' = 'abc'; 'fixture.mod' = 'def' }
+    Assert $sameBundle.Ok "tracked and freshly built bundle maps match"
+    Assert (-not (Compare-BundleBlobMaps -Tracked @{ 'fixture.mod_bundle' = 'abc' } -Built @{ 'fixture.mod_bundle' = 'changed' }).Ok) "changed built bytes are rejected"
+    Assert (-not (Compare-BundleBlobMaps -Tracked @{ 'fixture.mod_bundle' = 'abc' } -Built @{ 'fixture.mod_bundle' = 'abc'; 'extra.bin' = 'x' }).Ok) "untracked built artifact is rejected"
+
+    # Issue #1376: an existing Workshop identity remains publishable when the
+    # author is not subscribed. The lane must never invent Steam-managed
+    # content directories or claim a deploy that did not happen.
+    $subscribedPolicy = Get-ShipDeploymentPolicy -PublishedId '3733366851' -DeployDirectoryExists $true
+    Assert ($subscribedPolicy.Mode -eq 'subscribed' -and $subscribedPolicy.ShouldDeploy -and $subscribedPolicy.RemoteDeploy) "subscribed Workshop item keeps local and remote deploy"
+    $subscribedLocalOnlyPolicy = Get-ShipDeploymentPolicy -PublishedId '3733366851' -DeployDirectoryExists $true -NoRemote
+    Assert ($subscribedLocalOnlyPolicy.Mode -eq 'subscribed' -and $subscribedLocalOnlyPolicy.ShouldDeploy -and -not $subscribedLocalOnlyPolicy.RemoteDeploy) "-NoRemote preserves subscribed local deploy while skipping remote"
+    $unsubscribedPolicy = Get-ShipDeploymentPolicy -PublishedId '3733366851' -DeployDirectoryExists $false
+    Assert ($unsubscribedPolicy.Mode -eq 'publication-only' -and -not $unsubscribedPolicy.ShouldDeploy -and -not $unsubscribedPolicy.RemoteDeploy) "unsubscribed existing item selects publication-only with no deploy target"
+    $receiptSubscribedPolicy = Get-ShipDeploymentPolicy -PublishedId '3733366851' -DeployDirectoryExists $true -BundleAuthority receipt -NoRemote
+    Assert ($receiptSubscribedPolicy.ShouldDeploy -and $receiptSubscribedPolicy.RequiresDeploymentReceipt -and -not $receiptSubscribedPolicy.RemoteDeploy) "receipt authority uses a separate hosted local-only deployment receipt"
+    $receiptRemoteRejected = $false
+    try { $null = Get-ShipDeploymentPolicy -PublishedId '3733366851' -DeployDirectoryExists $true -BundleAuthority receipt }
+    catch { $receiptRemoteRejected = $_.Exception.Message -match 'explicit -NoRemote' }
+    Assert $receiptRemoteRejected "receipt local deployment never silently substitutes for remote deployment"
+    $receiptBuildOnlyPolicy = Get-ShipDeploymentPolicy -PublishedId '3733366851' -DeployDirectoryExists $true -BundleAuthority receipt -BuildOnly
+    Assert (-not $receiptBuildOnlyPolicy.ShouldDeploy) "receipt artifact-only build does not acquire deployment authority"
+    $bootstrapPolicy = Get-ShipDeploymentPolicy -PublishedId '0' -DeployDirectoryExists $false
+    Assert ($bootstrapPolicy.Mode -eq 'bootstrap' -and -not $bootstrapPolicy.ShouldDeploy -and -not $bootstrapPolicy.RemoteDeploy) "first upload remains a separate no-deploy bootstrap"
+    $invalidPublishedIdRejected = $false
+    try { Get-ShipDeploymentPolicy -PublishedId 'not-an-id' -DeployDirectoryExists $false | Out-Null }
+    catch { $invalidPublishedIdRejected = ($_.Exception.Message -match 'Invalid Workshop published_id') }
+    Assert $invalidPublishedIdRejected "invalid Workshop identity fails closed before publication"
+
+    Assert (Test-ShipUploadEvidencePolicy -UploadStatus UPLOADED -DeploymentMode publication-only -DeployVerified $false -PublicationReceiptAccepted $true).Ok "publication-only accepts a fresh uploaded-content receipt"
+    Assert (Test-ShipUploadEvidencePolicy -UploadStatus NOCHANGE -DeploymentMode publication-only -DeployVerified $false -PublicationReceiptAccepted $true).Ok "publication-only accepts receipt-bound server no-change evidence"
+    Assert (Test-ShipUploadEvidencePolicy -UploadStatus NOCHANGE -DeploymentMode subscribed -DeployVerified $true -PublicationReceiptAccepted $true).Ok "subscribed no-change requires and accepts byte-verified deploy"
+    Assert (-not (Test-ShipUploadEvidencePolicy -UploadStatus NOCHANGE -DeploymentMode subscribed -DeployVerified $false -PublicationReceiptAccepted $true).Ok) "subscribed no-change without deploy verification fails closed"
+    Assert (-not (Test-ShipUploadEvidencePolicy -UploadStatus NOCHANGE -DeploymentMode publication-only -DeployVerified $false -PublicationReceiptAccepted $false).Ok) "publication-only no-change without accepted receipt fails closed"
+    Assert (-not (Test-ShipUploadEvidencePolicy -UploadStatus NOCHANGE -DeploymentMode bootstrap -DeployVerified $false -PublicationReceiptAccepted $true).Ok) "bootstrap cannot claim success from no-content-change"
+    Assert (-not (Test-ShipUploadEvidencePolicy -UploadStatus NONE -DeploymentMode publication-only -DeployVerified $false -PublicationReceiptAccepted $true).Ok) "publication-only still requires a fresh Workshop result"
+
+    $cl = @(
+        '# Changelog',
+        '',
+        '## 0.7.222-dev (2026-07-04) - #294 (crash) FIXED: non-resident pickup CTD',
+        '',
+        '- **#294 (crash) FIXED.** Details. Separate latent bug tracked as #322.',
+        '',
+        '## 0.7.221-dev (2026-07-04) - older entry referencing #288',
+        '',
+        '- old work on #288.'
+    )
+    $top = Get-TopChangelogEntry -Lines $cl
+    Assert ($null -ne $top) "top entry found in a normal changelog"
+    Assert ($top.Header -like '*0.7.222-dev*') "top header is the NEWEST version"
+    Assert ($top.Entry -notmatch '#288') "entry text does not bleed into the second entry"
+    Assert ($null -eq (Get-TopChangelogEntry -Lines @('no headers', 'here'))) "changelog without '## ' headers returns null"
+
+    $plan = Get-ShipLabelPlan -Header ($top.Header + ' [verify-fix]') -Entry $top.Entry
+    Assert ($null -eq $plan.Skip) "fix entry is not skipped"
+    Assert ($plan.Label -eq 'verify-fix') "fix entry labels verify-fix"
+    Assert (($plan.Refs -join ',') -eq '294,322') "refs harvested, deduped, sorted (294,322)"
+
+    $planD = Get-ShipLabelPlan -Header '## 0.7.225-dev - #144 [diag] retire trace, add [ct:vaul] probe' -Entry 'probe work for #144'
+    Assert ($planD.Label -eq 'diagnostics-armed') "probe-marker header labels diagnostics-armed"
+
+    $planC = Get-ShipLabelPlan -Header '## 0.7.226-dev - #586 [verify-fix-coop] peer fix' -Entry 'host/client work for #586'
+    Assert ($planC.Skip -eq 'retired-lifecycle-marker') "retired verify-fix-coop marker fails closed"
+
+    $planDC = Get-ShipLabelPlan -Header '## 0.7.227-dev - #600 [diag] [coop-required] wire probe' -Entry 'probe #600'
+    Assert ($planDC.Label -eq 'diagnostics-armed') "coop diagnostic keeps diagnostics-armed as its lifecycle"
+    Assert ($planDC.CoopRequired) "coop diagnostic requests the orthogonal coop-required qualifier"
+
+    $planSmell = Get-ShipLabelPlan -Header '## 0.7.228-dev - #601 [verify-fix] peer fix' -Entry 'host/client fix for #601'
+    Assert ($planSmell.Label -eq 'verify-fix') "coop-smelling prose alone does not silently change lifecycle intent"
+    Assert ($planSmell.Coop -and -not $planSmell.CoopRequired) "coop smell remains a review reminder"
+
+    $life = Get-LifecycleEditPlan -Existing @('bug', 'not-started', 'diagnostics-armed') -Requested 'verify-fix'
+    Assert ($life.Target -eq 'verify-fix') "verify request becomes the sole lifecycle target"
+    Assert (($life.Remove -join ',') -eq 'not-started,diagnostics-armed') "verify transition removes all competing lifecycle labels"
+    Assert ($life.Add) "missing lifecycle target is added"
+
+    $keepCoop = Get-LifecycleEditPlan -Existing @('verify-fix', 'verify-fix-coop', 'not-started') -Requested 'verify-fix'
+    Assert ($keepCoop.Target -eq 'verify-fix') "retired coop lifecycle cannot survive a verify transition"
+    Assert (($keepCoop.Remove -join ',') -eq 'verify-fix-coop,not-started') "verify transition retires old and competing labels"
+
+    $retiredCleanup = Get-LifecycleEditPlan -Existing @('Fixed', 'not-started', 'diagnostics-armed') -Requested 'verify-fix'
+    Assert ($retiredCleanup.Target -eq 'verify-fix') "requested canonical lifecycle replaces invalid open labels"
+    Assert (($retiredCleanup.Remove -join ',') -eq 'Fixed,not-started,diagnostics-armed') "retired and competing lifecycle labels are removed atomically"
+
+    $blockedDowngrade = Get-LifecycleEditPlan -Existing @('verify-fix') -Requested 'diagnostics-armed'
+    Assert ($blockedDowngrade.BlockedDowngrade -and $blockedDowngrade.Target -eq 'verify-fix') "verify-to-diagnostics downgrade requires failed-verification evidence"
+    $allowedDowngrade = Get-LifecycleEditPlan -Existing @('verify-fix') -Requested 'diagnostics-armed' -FailedVerificationEvidence $true
+    Assert (-not $allowedDowngrade.BlockedDowngrade -and $allowedDowngrade.Target -eq 'diagnostics-armed') "evidenced failed verification permits diagnostics transition"
+
+    $keepDiagCoop = Get-CoopQualifierEditPlan -Existing @('diagnostics-armed', 'coop-required') -LifecycleTarget 'diagnostics-armed' -ExplicitlyRequired $false
+    Assert (-not $keepDiagCoop.Want -and -not $keepDiagCoop.Add -and $keepDiagCoop.Remove) "solo card strips stale coop-required routing"
+
+    $addDiagCoop = Get-CoopQualifierEditPlan -Existing @('diagnostics-armed') -LifecycleTarget 'diagnostics-armed' -ExplicitlyRequired $true
+    Assert ($addDiagCoop.Want -and $addDiagCoop.Add -and -not $addDiagCoop.Remove) "explicit coop diagnostic adds missing qualifier"
+
+    $removeStaleCoop = Get-CoopQualifierEditPlan -Existing @('coop-required') -LifecycleTarget 'verify-fix' -ExplicitlyRequired $false
+    Assert (-not $removeStaleCoop.Want -and -not $removeStaleCoop.Add -and $removeStaleCoop.Remove) "leaving diagnostics removes stale coop-required qualifier"
+
+    $combinedBody = "## CURRENT LIVE TEST`n`n**Build/banner:** v1.2.3-dev, confirm ``[wt:LOAD]```n**Topology:** Solo`n`n1. Equip Kruber's Mace in the Keep.`n`n**Expected:** Kruber's Mace behaves normally."
+    $shipFixtureAuthority = [pscustomobject]@{ Records = @(
+        [pscustomobject]@{
+            ModId='wt_dev'; Version='1.2.3-dev'; WorkshopId='1111111111'
+            LoadRoutes=@([pscustomobject]@{Marker='[wt:LOAD]'})
+            ExactBannerRoutes=@(); CommandRoutes=@(); MenuSurfaces=@()
+            ReceiptRoutes=@([pscustomobject]@{
+                Marker='[gt:unbounded]'; Signature='[gt:unbounded] tick=%d'; Bound=$false
+            })
+        },
+        [pscustomobject]@{
+            ModId='woc'; Version='0.1.42-dev'; WorkshopId='2222222222'
+            LoadRoutes=@(); ExactBannerRoutes=@([pscustomobject]@{Tag='[WOC]'})
+            CommandRoutes=@(); MenuSurfaces=@(); ReceiptRoutes=@()
+        }
+    ) }
+    $combinedDiagnostic = Get-ShipIssueTransitionDecision -Existing @('diagnostics-armed', 'tooling') -Requested 'diagnostics-armed' -CoopRequired $false -RepositoryLabels @('tooling') -Comments @() -Body $combinedBody -Authority $shipFixtureAuthority
+    Assert (-not $combinedDiagnostic.Ok -and $combinedDiagnostic.Reason -eq 'tooling-issue-not-auto-labeled') "ship never auto-labels tooling work"
+
+    $combinedVerifyBodyOnly = Get-ShipIssueTransitionDecision -Existing @('diagnostics-armed') -Requested 'verify-fix' -CoopRequired $false -Comments @() -Body $combinedBody -Authority $shipFixtureAuthority
+    Assert (-not $combinedVerifyBodyOnly.Ok -and $combinedVerifyBodyOnly.Reason -eq 'invalid-current-live-test-card') "live-test labels never accept an issue-body fallback"
+
+    $missingAuthorityDecision = Get-ShipIssueTransitionDecision -Existing @('not-started') -Requested 'verify-fix' -CoopRequired $false -Comments @([pscustomobject]@{ body = $combinedBody }) -Body ''
+    Assert (-not $missingAuthorityDecision.Ok -and $missingAuthorityDecision.Reason -eq 'live-card-authority-unavailable') "ready transitions fail closed when deployed-source authority is unavailable"
+
+    $soloMethod = @([pscustomobject]@{ body = $combinedBody })
+    $wocExactBannerCard = "## CURRENT LIVE TEST`n`n**Build/banner:** exact banner: [WOC] v0.1.42-dev loaded`n**Topology:** Solo`n`n1. Equip the Blightreaper in the Keep.`n`n**Expected:** The Blightreaper behaves normally."
+    $wocExactBannerDecision = Get-ShipIssueTransitionDecision -Existing @('not-started') -Requested 'verify-fix' -CoopRequired $false -Comments @([pscustomobject]@{ body = $wocExactBannerCard }) -Body '' -Authority $shipFixtureAuthority
+    Assert ($wocExactBannerDecision.Ok) "ship accepts a clearly labeled exact versioned runtime banner"
+    $combinedRepositoryCoop = Get-ShipIssueTransitionDecision -Existing @('verify-fix', 'tooling') -Requested 'verify-fix' -CoopRequired $false -RepositoryLabels @('tooling') -Comments $soloMethod -Body '' -Authority $shipFixtureAuthority
+    Assert (-not $combinedRepositoryCoop.Ok -and $combinedRepositoryCoop.Reason -eq 'tooling-issue-not-auto-labeled') "combined transition rejects repository-only live testing"
+
+    $coopCard = "## CURRENT LIVE TEST`n`n**Build/banner:** v1.2.3-dev, confirm ``[wt:LOAD]```n**Topology:** Co-op (host and one client)`n**Solo status:** Passed; remote view remains.`n`n1. Host equips Kruber's Mace.`n2. The joining player observes it.`n`n**Expected:** Both players see Kruber's Mace."
+    $coopMethod = @([pscustomobject]@{ body = $coopCard })
+    $combinedPreserveCoop = Get-ShipIssueTransitionDecision -Existing @('verify-fix-coop') -Requested 'verify-fix' -CoopRequired $false -Comments $coopMethod -Body '' -Authority $shipFixtureAuthority
+    Assert ($combinedPreserveCoop.Ok -and $combinedPreserveCoop.Edit.Target -eq 'verify-fix' -and $combinedPreserveCoop.CoopEdit.Want) "co-op card uses verify-fix plus coop-required and retires old lifecycle"
+
+    $failedDiagnostic = @([pscustomobject]@{ body = $combinedBody.Replace("**Expected:**", "Verification still fails on the deployed build.`n`n**Expected:**") })
+    $combinedDowngrade = Get-ShipIssueTransitionDecision -Existing @('verify-fix') -Requested 'diagnostics-armed' -CoopRequired $false -Comments $failedDiagnostic -Body '' -Authority $shipFixtureAuthority
+    Assert ($combinedDowngrade.Ok -and $combinedDowngrade.Edit.Target -eq 'diagnostics-armed') "combined transition permits an evidenced failed-verification downgrade"
+
+    $existingCoopDiagnostic = Get-ShipIssueTransitionDecision -Existing @('diagnostics-armed', 'coop-required') -Requested 'diagnostics-armed' -CoopRequired $false -Comments $coopMethod -Body '' -Authority $shipFixtureAuthority
+    Assert ($existingCoopDiagnostic.Ok -and $existingCoopDiagnostic.CoopEdit.Want) "combined transition preserves an existing co-op diagnostic qualifier"
+
+    $planL = Get-ShipLabelPlan -Header '## 0.12.204-dev - Localization: applied dev status-tag doctrine (#301)' -Entry 'refs #74 #108 as tag context'
+    Assert ($planL.Skip -eq 'loc-sweep') "loc-sweep header is skipped"
+
+    $planT = Get-ShipLabelPlan -Header '## 0.1.3-dev - #602 [tooling] [verify-fix] release check' -Entry 'tool-only work #602'
+    Assert ($planT.Skip -eq 'tooling-entry') "explicit tooling work is never auto-labeled"
+    $planDocs = Get-ShipLabelPlan -Header '## 0.1.4-dev - #661 [docs] [verify-fix] lifecycle documentation' -Entry 'documentation work #661'
+    Assert ($planDocs.Skip -eq 'tooling-entry') "docs work is never auto-labeled"
+    $runtimeDocumentation = Get-ShipIssueTransitionDecision -Existing @('bug', 'documentation', 'verify-fix', 'Tweaker: Weapons', 'CWV', 'cross-mod', '0-critical', 'WOC') -Requested 'verify-fix' -CoopRequired $false -RepositoryLabels @() -Comments $soloMethod -Body '' -Authority $shipFixtureAuthority
+    Assert ($runtimeDocumentation.Ok -and -not $runtimeDocumentation.IsRepositoryOnly) "#661-shaped runtime issue stays in the playtest route"
+
+    $unboundedCard = $combinedBody.Replace("Kruber's Mace behaves normally.", 'Exactly one `[gt:unbounded] tick=1` receipt appears.')
+    $unboundedDecision = Get-ShipIssueTransitionDecision -Existing @('not-started') -Requested 'verify-fix' -CoopRequired $false -Comments @([pscustomobject]@{ body = $unboundedCard }) -Body '' -Authority $shipFixtureAuthority
+    Assert (-not $unboundedDecision.Ok -and $unboundedDecision.Reason -eq 'invalid-current-live-test-card') "ship rejects a newly-ready card whose exact receipt route is unbounded"
+
+    $missingIntent = Get-ShipLabelPlan -Header '## 0.1.4-dev - #603 partial implementation' -Entry 'partial work #603'
+    Assert ($missingIntent.Skip -eq 'missing-lifecycle-marker') "unmarked work cannot receive an inferred verify lifecycle"
+    $ambiguousIntent = Get-ShipLabelPlan -Header '## 0.1.5-dev - #604 [diag] [verify-fix] mixed' -Entry 'mixed work #604'
+    Assert ($ambiguousIntent.Skip -eq 'ambiguous-lifecycle-marker') "mixed lifecycle markers fail closed"
+    $explicitBeatsProse = Get-ShipLabelPlan -Header '## 0.1.6-dev - #605 [verify-fix-coop] fix diagnostic output' -Entry 'host/client #605'
+    Assert ($explicitBeatsProse.Skip -eq 'retired-lifecycle-marker') "retired lifecycle intent fails closed"
+
+    $planN = Get-ShipLabelPlan -Header '## 0.1.2-dev - housekeeping' -Entry 'no issue references here'
+    Assert ($planN.Skip -eq 'no-refs') "entry without #N refs is a no-op"
+
+    # Issue #489: the native-probe guard. A native command that writes stderr
+    # and exits nonzero (the `gh release view <missing tag>` shape) must NOT
+    # throw under EAP=Stop -- on PS 5.1 with redirected streams the unguarded
+    # `2>&1 | Out-Null` pattern raised a terminating NativeCommandError and
+    # killed the ship mid-run. The exit code must come through faithfully.
+    $probeThrew = $false; $probeCode = $null
+    try { $probeCode = Invoke-NativeProbe { cmd /c "echo probe-stderr 1>&2 & exit 7" } }
+    catch { $probeThrew = $true }
+    Assert (-not $probeThrew) "native probe does not throw on stderr + nonzero exit (issue #489)"
+    Assert ($probeCode -eq 7) "native probe propagates the failure exit code (7)"
+    Assert ((Invoke-NativeProbe { cmd /c "exit 0" }) -eq 0) "native probe returns 0 on success"
+    Assert ($ErrorActionPreference -eq 'Stop') "native probe restores ErrorActionPreference to Stop"
+
+    # Issue #646: Steam normalizes textual `.mod` descriptors to CRLF. The
+    # deploy gate accepts that one representation difference without weakening
+    # the byte-exact contract for compiled bundles or hiding real text changes.
+    $compareDir = Join-Path ([System.IO.Path]::GetTempPath()) ("vt2-ship-646-" + [guid]::NewGuid().ToString('N'))
+    [System.IO.Directory]::CreateDirectory($compareDir) | Out-Null
+    try {
+        $lfMod = Join-Path $compareDir 'source.mod'
+        $crlfMod = Join-Path $compareDir 'deployed.mod'
+        $changedMod = Join-Path $compareDir 'changed.mod'
+        $standaloneCrBaseMod = Join-Path $compareDir 'standalone-cr-base.mod'
+        $standaloneCrMod = Join-Path $compareDir 'standalone-cr.mod'
+        $lfBundle = Join-Path $compareDir 'source.mod_bundle'
+        $crlfBundle = Join-Path $compareDir 'deployed.mod_bundle'
+
+        $lfText = "name = `"example`";`npackage = `"example`";`n"
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($lfMod, $lfText, $utf8NoBom)
+        [System.IO.File]::WriteAllText($crlfMod, $lfText.Replace("`n", "`r`n"), $utf8NoBom)
+        [System.IO.File]::WriteAllText($changedMod, $lfText.Replace('example";', 'different";'), $utf8NoBom)
+        [System.IO.File]::WriteAllBytes($standaloneCrBaseMod, [byte[]](110, 97, 109, 101, 120, 10))
+        [System.IO.File]::WriteAllBytes($standaloneCrMod, [byte[]](110, 97, 109, 101, 13, 120, 10))
+        [System.IO.File]::WriteAllBytes($lfBundle, [byte[]](65, 10, 66))
+        [System.IO.File]::WriteAllBytes($crlfBundle, [byte[]](65, 13, 10, 66))
+
+        Assert (Test-DeployFileEquivalent $lfMod $crlfMod) "LF/CRLF-only .mod descriptor difference is equivalent (issue #646)"
+        Assert (-not (Test-DeployFileEquivalent $lfMod $changedMod)) "real .mod descriptor content change still fails"
+        Assert (-not (Test-DeployFileEquivalent $standaloneCrBaseMod $standaloneCrMod)) "standalone CR is not normalized away"
+        Assert (-not (Test-DeployFileEquivalent $lfBundle $crlfBundle)) ".mod_bundle comparison remains byte-exact"
+        Assert (Test-DeployFileEquivalent $lfBundle $lfBundle) "byte-identical bundle still passes"
+    }
+    finally {
+        if (Test-Path $compareDir) {
+            Get-ChildItem -LiteralPath $compareDir -File | ForEach-Object {
+                Remove-Item -LiteralPath $_.FullName
+            }
+            Remove-Item -LiteralPath $compareDir
+        }
+    }
+
+    # Issues #436/#493 interface contract + the 2026-07-13 param-stomp incident:
+    # step 3 passes `-Mods $Mod` to publish-release.ps1, so that script MUST
+    # declare the [string[]]$Mods parameter -- and must never assign to a
+    # case-insensitive twin: PowerShell variable names are CASE-INSENSITIVE, so
+    # an inventory assignment to $mods silently OVERWRITES the $Mods parameter
+    # (live failure 2026-07-13: the filter validator saw 19 inventory hashtables
+    # instead of the single shipped mod name and the release step aborted).
+    $pubPath = Join-Path $PSScriptRoot '..\publish-release\publish-release.ps1'
+    $pubTxt = if (Test-Path $pubPath) { [System.IO.File]::ReadAllText($pubPath, [System.Text.Encoding]::UTF8) } else { '' }
+    Assert ($pubTxt -match '(?m)^\s*\[string\[\]\]\$Mods\b') "publish-release.ps1 declares [string[]]`$Mods (issues #436/#493)"
+    Assert ($pubTxt -match '(?m)^\s*\[string\]\$LauncherPath\b' -and
+        $pubTxt -match '(?m)^\s*\[string\]\$LauncherSource\b' -and
+        $pubTxt -match '(?m)^\s*\[string\]\$LauncherApprovalAnchor\b') "publish-release.ps1 declares the exact launcher approval interface (issue #683)"
+    Assert ($pubTxt -match 'Resolve-ApprovedVmbLauncherPath') "publish-release.ps1 revalidates the shared approved-launcher contract (issue #683)"
+    Assert (-not ($pubTxt -cmatch '(?m)^\s*\$mods\s*=')) "publish-release.ps1 never assigns lowercase `$mods (param-stomp guard, 2026-07-13)"
+    Assert ($pubTxt -match 'Resolve-GitHubReleaseByTag' -and $pubTxt -match 'Publish-GitHubReleaseAssetsById') "publish-release owns exact-tag fallback and release-id mutation (issue #651)"
+    $releaseLockText = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\publish-release\release-mutation-lock.ps1'))
+    Assert ($releaseLockText -match 'Global\\VT2_GitHubReleaseMutation' -and
+        $pubTxt -match 'Enter-VtGitHubReleaseMutationMutex' -and
+        $pubTxt -match 'ReleaseMutex\(\)') "shared daily GitHub release lookup/manifest/mutation is serialized across different-mod ships"
+    $publisherCapabilityPos = $pubTxt.IndexOf('Assert-VmbLauncherPublicationCapability')
+    $publisherLookupPos = $pubTxt.IndexOf('Resolve-GitHubReleaseByTag -Repo $ghRepo')
+    $publisherAssetMutationPos = $pubTxt.IndexOf('Publish-GitHubReleaseAssetsById -Repo $ghRepo')
+    Assert ($publisherCapabilityPos -ge 0 -and
+        $publisherCapabilityPos -lt $publisherLookupPos -and
+        $publisherCapabilityPos -lt $publisherAssetMutationPos) "launcher 0.6.0 machine-transaction and crash-safe ACL capability probe precedes every GitHub release lookup/mutation"
+    Assert ($pubTxt -match 'New-GitHubReleaseAssetSnapshots' -and
+        $pubTxt -match '-AssetSnapshots \$assetSnapshots') "zip, manifest, and receipt uploads consume immutable byte snapshots"
+    Assert ($pubTxt -match 'Get-VtPublicationSnapshot' -and
+        $pubTxt -match 'New-ReleaseZipBytesFromImmutableOutput' -and
+        $pubTxt -match "expectedByteSource" -and
+        $pubTxt -match "'git_commit_blobs'" -and
+        $pubTxt -match "'materialized_restrictive_handles'" -and
+        $pubTxt -notmatch 'Compress-Archive') "new release zips consume one coherent authority-neutral immutable byte snapshot"
+    $publisherSnapshotPos = $pubTxt.IndexOf('Get-VtPublicationSnapshot')
+    $publisherBuildMutationPos = $pubTxt.IndexOf("buildArguments = @('build', `$m.Folder)", $publisherSnapshotPos)
+    $publisherReceiptSnapshotPos = $pubTxt.IndexOf('Get-VtPublicationSnapshot', $publisherBuildMutationPos)
+    $publisherNormalizationPos = $pubTxt.IndexOf('Invoke-BuildOutputNormalization', $publisherBuildMutationPos)
+    $publisherSnapshotGatePos = $pubTxt.IndexOf('AuthorityProof.ByteSource -cne $expectedByteSource', $publisherReceiptSnapshotPos)
+    $publisherStageMutationPos = $pubTxt.IndexOf('[System.IO.File]::WriteAllBytes($destination', $publisherReceiptSnapshotPos)
+    $publisherZipConstructionPos = $pubTxt.IndexOf('New-ReleaseZipBytesFromImmutableOutput', $publisherReceiptSnapshotPos)
+    $publisherWorkshopReceiptPos = $pubTxt.IndexOf('New-WorkshopPublicationReceipt', $publisherReceiptSnapshotPos)
+    Assert ($publisherSnapshotPos -ge 0 -and
+        $publisherSnapshotPos -lt $publisherBuildMutationPos -and
+        $publisherBuildMutationPos -lt $publisherNormalizationPos -and
+        $publisherNormalizationPos -lt $publisherReceiptSnapshotPos -and
+        $publisherSnapshotGatePos -gt $publisherReceiptSnapshotPos -and
+        $publisherSnapshotGatePos -lt $publisherStageMutationPos -and
+        $publisherSnapshotGatePos -lt $publisherZipConstructionPos -and
+        $publisherSnapshotGatePos -lt $publisherWorkshopReceiptPos) "publisher preserves tracked prebuild selection, then clean-builds and normalizes before receipt capture"
+    Assert (-not ($pubTxt -match 'status --porcelain')) "publisher authorization never relies on a mutable worktree cleanliness check"
+    Assert (-not ($pubTxt -match '(?m)^\s*gh\s+release\s+create\b')) "new releases use draft API plus immutable byte upload, not path-consuming gh release create"
+    $shipSource = [System.IO.File]::ReadAllText($PSCommandPath, [System.Text.Encoding]::UTF8)
+    $legacyTagProbe = 'gh release ' + 'view $tag'
+    $legacyTagUpload = 'gh release ' + 'upload $tag'
+    Assert ($shipSource.IndexOf($legacyTagProbe, [System.StringComparison]::Ordinal) -lt 0) "ship wrapper has no duplicate release-by-tag existence probe (issue #651)"
+    Assert ($shipSource.IndexOf($legacyTagUpload, [System.StringComparison]::Ordinal) -lt 0) "ship wrapper delegates existing-release mutation to release-id tooling (issue #651)"
+    $launcherHelperSource = [System.IO.File]::ReadAllText(
+        (Join-Path $PSScriptRoot '..\vmb-launcher-path.ps1'),
+        [System.Text.Encoding]::UTF8)
+    Assert ($launcherHelperSource -match 'CreateNoWindow\s*=\s*\$true') "VMBLauncher process creation explicitly suppresses visible console windows"
+    Assert ($launcherHelperSource -match 'ProcessWindowStyle\]::Hidden') "VMBLauncher process window style is hidden"
+    Assert ($shipSource -match 'Invoke-ShipLauncherNoWindow -LauncherExecutableLease \$launcherExecutableLease') "identity and release calls use the leased no-window launcher boundary"
+    $rawLauncherCall = '& $' + 'launcher @launcherArgs'
+    Assert ($shipSource.IndexOf($rawLauncherCall, [System.StringComparison]::Ordinal) -lt 0) "release path never invokes VMBLauncher through the raw PowerShell call operator"
+
+    $hostExe = (Get-Process -Id $PID).Path
+    $hiddenProbeLease = Enter-VmbLauncherExecutableLease -LauncherPath $hostExe
+    try {
+        $hiddenProbe = Invoke-ShipLauncherNoWindow `
+            -LauncherExecutableLease $hiddenProbeLease `
+            -ArgumentList @('-NoProfile', '-Command', '[Console]::Out.Write("ship-hidden-probe")')
+    }
+    finally { Exit-VmbLauncherExecutableLease -Lease $hiddenProbeLease }
+    Assert ($hiddenProbe.ExitCode -eq 0) "no-window process boundary preserves native exit code"
+    Assert (($hiddenProbe.Lines -join '') -eq 'ship-hidden-probe') "no-window process boundary captures redirected output"
+
+    # Issues #647/#1180: canonical ship reads shared settings only for launcher
+    # discovery and gives every launcher call one durable private config.
+    $bindingDir = Join-Path ([System.IO.Path]::GetTempPath()) ("vt2-ship-647-" + [guid]::NewGuid().ToString('N'))
+    [System.IO.Directory]::CreateDirectory($bindingDir) | Out-Null
+    try {
+        $settingsPath = Join-Path $bindingDir 'settings.json'
+        $originalSettings = [string][char]0xFEFF + "{`r`n  `"ProjectRoot`": `"C:\\old-root`",`r`n  `"Sentinel`": `"preserve exactly`"`r`n}`r`n"
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($settingsPath, $originalSettings, $utf8NoBom)
+        $originalSettingsBytes = [System.IO.File]::ReadAllBytes($settingsPath)
+        $privateFixture = $null
+        $settingsFixtureLease = $null
+        $liveTempFixture = $null
+        $unknownTempFixture = $null
+        try {
+            $settingsFixtureLease = Enter-VmbMachineTransactionLease `
+                -Action 'ship-private-settings-selftest' `
+                -ProjectRoot $bindingDir `
+                -MutexName ('Local\Ensrick.VT2Tweaker.ShipPrivateSelfTest.' + [guid]::NewGuid().ToString('N')) `
+                -RecordPath (Join-Path $bindingDir 'transaction.json')
+            $current = Get-Process -Id $PID
+            try { $currentStart = $current.StartTime.ToUniversalTime().Ticks }
+            finally { $current.Dispose() }
+            $liveTempFixture = Join-Path ([IO.Path]::GetTempPath()) `
+                ("vmblauncher-ship-{0}-{1}-{2}.json" -f $PID, $currentStart, [guid]::NewGuid().ToString('N'))
+            $staleTempFixture = Join-Path ([IO.Path]::GetTempPath()) `
+                ("vmblauncher-ship-2147483647-1-{0}.json" -f [guid]::NewGuid().ToString('N'))
+            $unknownTempFixture = Join-Path ([IO.Path]::GetTempPath()) `
+                ("vmblauncher-ship-unknown-{0}.json" -f [guid]::NewGuid().ToString('N'))
+            [IO.File]::WriteAllText($liveTempFixture, '{}')
+            [IO.File]::WriteAllText($staleTempFixture, '{}')
+            [IO.File]::WriteAllText($unknownTempFixture, '{}')
+            $privateFixture = New-ShipPrivateLauncherSettings `
+                -SourceSettingsPath $settingsPath -ProjectRoot $bindingDir
+            $seenBoundRoot = ([System.IO.File]::ReadAllText(
+                $privateFixture, [System.Text.Encoding]::UTF8) | ConvertFrom-Json).ProjectRoot
+            Assert ($seenBoundRoot -eq $bindingDir) "private launcher config binds the invoking worktree root"
+            Assert ($privateFixture -ne $settingsPath) "private launcher config never aliases shared settings"
+            Assert (Test-Path -LiteralPath $liveTempFixture) "private-config cleanup preserves an exact live PID/start owner"
+            Assert (-not (Test-Path -LiteralPath $staleTempFixture)) "private-config cleanup removes an exact stale PID/start owner"
+            Assert (Test-Path -LiteralPath $unknownTempFixture) "private-config cleanup preserves unknown filename schemas"
+        }
+        finally {
+            if ($privateFixture -and (Test-Path -LiteralPath $privateFixture)) {
+                Remove-Item -LiteralPath $privateFixture -Force
+            }
+            if ($liveTempFixture -and (Test-Path -LiteralPath $liveTempFixture)) {
+                Remove-Item -LiteralPath $liveTempFixture -Force
+            }
+            if ($unknownTempFixture -and (Test-Path -LiteralPath $unknownTempFixture)) {
+                Remove-Item -LiteralPath $unknownTempFixture -Force
+            }
+            if ($null -ne $settingsFixtureLease) {
+                Exit-VmbMachineTransactionLease -Lease $settingsFixtureLease
+            }
+        }
+        $after = [System.IO.File]::ReadAllBytes($settingsPath)
+        Assert (($after.Length -eq $originalSettingsBytes.Length) -and
+                (([System.BitConverter]::ToString($after)) -eq ([System.BitConverter]::ToString($originalSettingsBytes)))) "canonical ship never changes shared launcher settings bytes"
+
+        $identity = Test-ShipIdentityValues 'C:\repo\mod' 'c:\repo\mod' '1.2.3-dev' '1.2.3-dev' 'abc123' 'abc123' '42' '42'
+        Assert $identity.Ok "matching root/version/source/id identity passes"
+        Assert (-not (Test-ShipIdentityValues 'C:\repo-a\mod' 'C:\repo-b\mod' '1.2.3-dev' '1.2.3-dev' 'abc123' 'abc123' '42' '42').Ok) "different worktree root aborts"
+        Assert (-not (Test-ShipIdentityValues 'C:\repo\mod' 'C:\repo\mod' '1.2.3-dev' '1.2.2-dev' 'abc123' 'abc123' '42' '42').Ok) "different MOD_VERSION aborts"
+        Assert (-not (Test-ShipIdentityValues 'C:\repo\mod' 'C:\repo\mod' '1.2.3-dev' '1.2.3-dev' 'abc123' 'def456' '42' '42').Ok) "different source commit aborts"
+        Assert (-not (Test-ShipIdentityValues 'C:\repo\mod' 'C:\repo\mod' '1.2.3-dev' '1.2.3-dev' 'abc123' 'abc123' '42' '43').Ok) "different published_id aborts"
+    }
+    finally {
+        if (Test-Path $bindingDir) {
+            Get-ChildItem -LiteralPath $bindingDir -File | ForEach-Object { Remove-Item -LiteralPath $_.FullName }
+            Remove-Item -LiteralPath $bindingDir
+        }
+    }
+
+    # Clean linked worktrees do not contain the ignored launcher checkout or
+    # .vmbrc. Dependency fallback may supply only those machine-local bytes;
+    # mods_dir and the later launcher identity probe must still bind source to
+    # the invoking worktree. Every temporary file must be cleaned on failure.
+    $dependencyDir = Join-Path ([System.IO.Path]::GetTempPath()) ("vt2-ship-deps-" + [guid]::NewGuid().ToString('N'))
+    $fixtureRepo = Join-Path $dependencyDir 'invoking'
+    $fixtureConfigured = Join-Path $dependencyDir 'configured'
+    [System.IO.Directory]::CreateDirectory($fixtureRepo) | Out-Null
+    [System.IO.Directory]::CreateDirectory($fixtureConfigured) | Out-Null
+    try {
+        $missingLauncherRejected = $false
+        try {
+            Resolve-ShipLauncherPath -RepoRoot $fixtureRepo -ExplicitPath '' -ConfiguredProjectRoot $null -PrimaryWorktreeRoot $null | Out-Null
+        }
+        catch { $missingLauncherRejected = ($_.Exception.Message -match 'not found') }
+        Assert $missingLauncherRejected "clean worktree fails closed when no approved launcher exists"
+
+        $launcherRelative = 'tools\vmb-launcher\bin\Release\net9.0-windows\win-x64\publish\VMBLauncher.exe'
+        $configuredLauncher = Join-Path $fixtureConfigured $launcherRelative
+        [System.IO.Directory]::CreateDirectory((Split-Path $configuredLauncher -Parent)) | Out-Null
+        [System.IO.File]::WriteAllBytes($configuredLauncher, [byte[]](1, 2, 3))
+        $launcherFound = Resolve-ShipLauncherPath -RepoRoot $fixtureRepo -ExplicitPath '' -ConfiguredProjectRoot $fixtureConfigured -PrimaryWorktreeRoot $null
+        Assert ((Test-ShipPathEqual $launcherFound.Path $configuredLauncher) -and $launcherFound.Source -eq 'VMBLauncher configured ProjectRoot') "configured worktree supplies launcher bytes without supplying source"
+
+        $badExplicitLauncherRejected = $false
+        try {
+            Resolve-ShipLauncherPath -RepoRoot $fixtureRepo -ExplicitPath (Join-Path $dependencyDir 'missing.exe') -ConfiguredProjectRoot $fixtureConfigured -PrimaryWorktreeRoot $null | Out-Null
+        }
+        catch { $badExplicitLauncherRejected = ($_.Exception.Message -match 'VT2_SHIP_VMB_LAUNCHER') }
+        Assert $badExplicitLauncherRejected "invalid explicit launcher fails instead of silently falling back"
+
+        $missingRcRejected = $false
+        try {
+            Resolve-ShipVmbRcPath -RepoRoot $fixtureRepo -ExplicitPath '' -ConfiguredProjectRoot $null -PrimaryWorktreeRoot $null | Out-Null
+        }
+        catch { $missingRcRejected = ($_.Exception.Message -match 'No approved .vmbrc') }
+        Assert $missingRcRejected "clean worktree fails closed when no approved .vmbrc exists"
+
+        $wrongRc = Join-Path $fixtureConfigured '.vmbrc'
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($wrongRc, '{ "mods_dir": "mods" }', $utf8NoBom)
+        $wrongRootRejected = $false
+        try {
+            Resolve-ShipVmbRcPath -RepoRoot $fixtureRepo -ExplicitPath $wrongRc -ConfiguredProjectRoot $null -PrimaryWorktreeRoot $null | Out-Null
+        }
+        catch { $wrongRootRejected = ($_.Exception.Message -match 'not invoking root') }
+        Assert $wrongRootRejected "candidate .vmbrc that redirects to another source root is rejected"
+
+        [System.IO.File]::WriteAllText($wrongRc, "{`r`n  `"mods_dir`": `".`",`r`n  `"sentinel`": `"preserve bytes`"`r`n}`r`n", $utf8NoBom)
+        $rcResolution = Resolve-ShipVmbRcPath -RepoRoot $fixtureRepo -ExplicitPath '' -ConfiguredProjectRoot $fixtureConfigured -PrimaryWorktreeRoot $null
+        Assert ($rcResolution.NeedsStaging -and $rcResolution.Source -eq 'VMBLauncher configured ProjectRoot') "configured .vmbrc is selected only for transient staging"
+
+        $stagedMarker = Join-Path $dependencyDir 'staged-seen.txt'
+        Invoke-WithShipVmbRc -RepoRoot $fixtureRepo -Resolution $rcResolution -Action {
+            if (Test-Path -LiteralPath (Join-Path $fixtureRepo '.vmbrc') -PathType Leaf) {
+                [System.IO.File]::WriteAllText($stagedMarker, 'yes', $utf8NoBom)
+            }
+        }
+        Assert (Test-Path -LiteralPath $stagedMarker -PathType Leaf) "transient .vmbrc exists during launcher action"
+        Assert (-not (Test-Path -LiteralPath (Join-Path $fixtureRepo '.vmbrc'))) "transient .vmbrc is removed after successful action"
+
+        $stageFailurePropagated = $false
+        try {
+            Invoke-WithShipVmbRc -RepoRoot $fixtureRepo -Resolution $rcResolution -Action { throw 'planted launcher failure' }
+        }
+        catch { $stageFailurePropagated = ($_.Exception.Message -match 'planted launcher failure') }
+        Assert $stageFailurePropagated "transient-config wrapper propagates launcher failure"
+        Assert (-not (Test-Path -LiteralPath (Join-Path $fixtureRepo '.vmbrc'))) "transient .vmbrc is removed after failed action"
+
+        $localRc = Join-Path $fixtureRepo '.vmbrc'
+        $localRcText = "{`r`n  `"mods_dir`": `".`",`r`n  `"local`": true`r`n}`r`n"
+        [System.IO.File]::WriteAllText($localRc, $localRcText, $utf8NoBom)
+        $localBytesBefore = [System.IO.File]::ReadAllBytes($localRc)
+        $localResolution = Resolve-ShipVmbRcPath -RepoRoot $fixtureRepo -ExplicitPath $wrongRc -ConfiguredProjectRoot $fixtureConfigured -PrimaryWorktreeRoot $null
+        Invoke-WithShipVmbRc -RepoRoot $fixtureRepo -Resolution $localResolution -Action { }
+        $localBytesAfter = [System.IO.File]::ReadAllBytes($localRc)
+        Assert (-not $localResolution.NeedsStaging) "existing invoking-worktree .vmbrc wins over fallback candidates"
+        Assert (([System.BitConverter]::ToString($localBytesBefore)) -eq ([System.BitConverter]::ToString($localBytesAfter))) "existing invoking-worktree .vmbrc remains byte-exact"
+    }
+    finally {
+        if (Test-Path $dependencyDir) {
+            Get-ChildItem -LiteralPath $dependencyDir -Recurse -File | ForEach-Object { Remove-Item -LiteralPath $_.FullName }
+            Get-ChildItem -LiteralPath $dependencyDir -Recurse -Directory |
+                Sort-Object { $_.FullName.Length } -Descending |
+                ForEach-Object { Remove-Item -LiteralPath $_.FullName }
+            Remove-Item -LiteralPath $dependencyDir
+        }
+    }
+
+    # Issue #591: this is an ordering invariant, not merely a documentation
+    # promise. Both offline gates must execute before the launcher can perform
+    # its first build/deploy/upload action.
+    $selfRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    $selfTxt = [System.IO.File]::ReadAllText($PSCommandPath, [System.Text.Encoding]::UTF8)
+    $quickInvocation = '& $quickGate -Quick -SkipLua -SkipBundleAtomicity:$BuildOnly -SkipBuildReceipts:$BuildOnly -SkipCustomUnitBundleReachability:$BuildOnly -Quiet'
+    $quickPos = $selfTxt.IndexOf($quickInvocation)
+    $lintPos = $selfTxt.IndexOf('& $modLint $Mod -Quiet')
+    $launcherCallMarker = 'Invoke-ShipLauncherNoWindow -LauncherExecutableLease $' + 'launcherExecutableLease'
+    $launcherPos = $selfTxt.LastIndexOf($launcherCallMarker)
+    Assert ($quickPos -ge 0) "ship source invokes the fast headless QA gate (issue #591)"
+    Assert ($lintPos -ge 0) "ship source invokes target-mod lint (issue #591)"
+    Assert ($launcherPos -ge 0 -and $quickPos -lt $launcherPos -and $lintPos -lt $launcherPos) "both headless gates precede launcher build/deploy/upload"
+    $freshnessBuildMarker = "Assert-WtHistorySourceFreshness -Mod `$Mod -RepoRoot `$repoRoot -Phase 'pre-build'"
+    $freshnessBuildPos = $selfTxt.LastIndexOf($freshnessBuildMarker)
+    Assert ($freshnessBuildPos -ge 0 -and $freshnessBuildPos -lt $launcherPos) "WT source freshness is required immediately before launcher build/deploy/upload"
+    $freshnessCalls = [regex]::Matches($selfTxt, '(?m)^' +
+        [regex]::Escape('Assert-WtHistorySourceFreshness -Mod $Mod -RepoRoot $repoRoot -Phase')).Count
+    Assert ($freshnessCalls -eq 4) "WT freshness closes preflight, pre-build, pre-release, and pre-upload windows"
+    Assert ($selfTxt.IndexOf("`$Mod -ne 'weapon_tweaker' -and `$Mod -ne 'weapon_tweaker_dev'") -ge 0) "required freshness is scoped to both WT release streams"
+    Assert ($selfTxt.IndexOf('& $gate -RequireRemoteFresh -Quiet') -ge 0) "release freshness fails closed on unavailable canonical remote"
+    Assert ($selfTxt.IndexOf('check_wt_history_source_freshness.ps1') -ge 0) "ship delegates freshness to the canonical QA gate"
+
+    # Parallel-session collision guard: the ship/version claim gate must be
+    # present, must precede the launcher, and must expose the -NoClaim escape
+    # hatch. The banner marker is concatenated so it appears literally only once
+    # (in the gate banner), not here.
+    $claimGateMarker = 'SHIP/VERSION ' + 'CLAIM GATE'
+    $claimGatePos = $selfTxt.IndexOf($claimGateMarker)
+    # LastIndexOf: compare against the MAIN-BODY launcher call, not the earlier
+    # self-test assertions.
+    $launcherMainPos = $selfTxt.LastIndexOf($launcherCallMarker)
+    Assert ($claimGatePos -ge 0) "ship source contains the ship/version claim gate (parallel-session collision guard)"
+    Assert ($claimGatePos -ge 0 -and $launcherMainPos -ge 0 -and $claimGatePos -lt $launcherMainPos) "claim gate precedes launcher build/deploy/upload"
+    Assert ($selfTxt.IndexOf('-Verify -ExpectedVersion $modVersion') -ge 0) "claim gate verifies the claim against the source MOD_VERSION"
+    Assert ($selfTxt.IndexOf('6 { Fail "Ship claim for') -ge 0) "claim gate rejects a same-version foreign owner"
+    Assert ($selfTxt.IndexOf('Claim broker missing') -ge 0) "missing claim broker fails closed"
+    Assert ($selfTxt.IndexOf('-Mod $Mod -Release -Quiet') -ge 0) "ship auto-releases the claim on success"
+    Assert ($selfTxt -match '(?m)^\s*\[switch\]\$NoClaim\b') "ship retains -NoClaim for non-publishing build-only use"
+    Assert ($selfTxt.IndexOf('-NoClaim is not permitted for Workshop publication') -ge 0) "Workshop publication cannot bypass the machine-global claim"
+    Assert ($selfTxt.IndexOf('-SkipGitHub is not permitted for Workshop publication') -ge 0) "Workshop publication cannot bypass provenance recording"
+    Assert ($selfTxt -match '(?m)^\s*\[switch\]\$BuildOnly\b') "ship exposes the canonical hidden build-only path"
+    Assert ($selfTxt.IndexOf('-SkipBundleAtomicity:$BuildOnly') -ge 0) "build-only preflight defers bundle atomicity until after generation"
+    Assert ($selfTxt.IndexOf('-SkipBuildReceipts:$BuildOnly') -ge 0) "build-only preflight defers stale receipt validation until after generation"
+    Assert ($selfTxt.IndexOf('-SkipCustomUnitBundleReachability:$BuildOnly') -ge 0) "build-only preflight defers compiled custom-unit reachability until after generation"
+    Assert ($selfTxt.IndexOf("promotion-status.ps1'", $mainDispatchPos) -ge 0) "every split-stream ship invokes the stranded-fix promotion report"
+    Assert ($selfTxt.IndexOf('& $promotionStatus -Mod $Mod', $mainDispatchPos) -ge 0) "stranded-fix report is scoped to the exact ship target"
+    Assert ($selfTxt.IndexOf('qa\check_custom_unit_bundle_reachability.ps1') -ge 0) "build-only runs custom-unit reachability after generation"
+    Assert ($selfTxt.IndexOf('qa\check_cwv_old_musket_compiled_contract.ps1') -ge 0) "build-only carries the CWV Old Musket post-compiler gate"
+    Assert ($selfTxt.IndexOf("if (`$Mod -eq 'character_weapon_variants')") -ge 0) "Old Musket post-compiler gate is scoped to CWV"
+    Assert ($selfTxt.IndexOf("@('build', `$Mod, '--clean')") -ge 0) "build-only invokes VMBLauncher's clean build action"
+    Assert ($selfTxt.IndexOf("'build-output-normalization.ps1'") -ge 0) "ship sources the shared build-output normalizer"
+    Assert ($selfTxt.IndexOf("'build-receipt.ps1'") -ge 0) "ship sources the exact dirty-source receipt policy"
+    Assert ($selfTxt.IndexOf('BUILD-ONLY COMPLETE') -ge 0) "build-only exits before deploy/upload/release handling"
+    $mainDispatchPos = $selfTxt.LastIndexOf('if ($SelfTest) { exit (Invoke-ShipSelfTest) }')
+    $canonicalShipSource = $selfTxt.Substring($mainDispatchPos)
+    $bundleAuthorityPreflightPos = $selfTxt.IndexOf(
+        'bundleAuthorityPolicy = Assert-VtBundleAuthorityShipPreflight', $mainDispatchPos)
+    $transactionLeasePos = $selfTxt.IndexOf(
+        'transactionLease = Enter-VmbMachineTransactionLease', $mainDispatchPos)
+    Assert ($bundleAuthorityPreflightPos -ge 0 -and
+        $bundleAuthorityPreflightPos -lt $transactionLeasePos) "bundle authority fails closed before transaction lease or launcher mutation"
+    Assert ($canonicalShipSource.IndexOf('-BuildOnly:$BuildOnly', [System.StringComparison]::Ordinal) -ge 0 -and
+        $canonicalShipSource.IndexOf('-RequireReceiptAuthority:', [System.StringComparison]::Ordinal) -ge 0) "ship gates receipt publication on the explicit launcher capability while preserving BuildOnly"
+    $loadTagResolvePos = $selfTxt.IndexOf('$loadTagResolution = Get-VtLoadTagResolution -MainLuaPath $luaPath', $mainDispatchPos)
+    $statusLabelPos = $selfTxt.IndexOf('==> Status-labeling shipped issues', $mainDispatchPos)
+    $reconcileArgsPos = $selfTxt.IndexOf('$reconcileArgs = @{', $mainDispatchPos)
+    $reconcileInvokePos = $selfTxt.IndexOf('& $refreshScript @reconcileArgs', $mainDispatchPos)
+    $refreshLoadTagPos = $selfTxt.IndexOf('LoadTag     = "$loadTag"', $mainDispatchPos)
+    $refreshInvokePos = $selfTxt.IndexOf('& $refreshScript @refreshArgs', $mainDispatchPos)
+    Assert ($loadTagResolvePos -ge 0 -and $loadTagResolvePos -lt $statusLabelPos) "ship resolves the authoritative LOAD tag before lifecycle mutation"
+    Assert ($reconcileArgsPos -gt $statusLabelPos -and $reconcileArgsPos -lt $reconcileInvokePos -and
+        $selfTxt.Substring($reconcileArgsPos, $reconcileInvokePos - $reconcileArgsPos) -match
+            'ReconcileAllStreams\s*=\s*\$true') `
+        "every ordinary ship automatically requests exact all-stream reconciliation"
+    Assert ($reconcileInvokePos -lt $refreshInvokePos) `
+        "cross-mod versions reconcile atomically before the exact shipped-stream manifest pass"
+    Assert ($refreshLoadTagPos -gt $statusLabelPos -and $refreshLoadTagPos -lt $refreshInvokePos) "card refresher receives the previously resolved LOAD tag through named splatting"
+    $helperOwnedTag = Resolve-VtLoadTag -MainLuaText 'local MOD_VERSION = "0.8.124-dev"' `
+        -LuaTexts @('mod:echo("[cim:LOAD]")') -FallbackTag 'crafting_in_modded_dev'
+    Assert ($helperOwnedTag.Success -and $helperOwnedTag.LoadTag -eq 'cim' -and $helperOwnedTag.Source -eq 'lua-root') "ship resolver does not replace a helper-owned LOAD tag with its directory fallback"
+    Assert ($canonicalShipSource.IndexOf('Invoke-WithBoundLauncherProjectRoot', [System.StringComparison]::Ordinal) -lt 0) "canonical ship never rewrites shared launcher settings"
+    Assert ($canonicalShipSource.IndexOf('New-ShipPrivateLauncherSettings', [System.StringComparison]::Ordinal) -ge 0) "canonical ship creates one durable private launcher config"
+    $initialAuthorizationPos = $selfTxt.IndexOf('publicationAuthorization = Get-LivePublicationAuthorization', $mainDispatchPos)
+    $cleanBuildPos = $selfTxt.IndexOf("launcherArgs = @('build', `$Mod, '--clean')", $mainDispatchPos)
+    $buildNormalizationPos = $selfTxt.IndexOf('buildNormalization = Invoke-BuildOutputNormalization', $mainDispatchPos)
+    $sourceBeforePos = $selfTxt.IndexOf('buildSourceSnapshotBefore = Get-VtBuildWorkingSourceMap', $mainDispatchPos)
+    $sourceAfterPos = $selfTxt.IndexOf('buildSourceSnapshotAfter = Get-VtBuildWorkingSourceMap', $buildNormalizationPos)
+    $outputSetPos = $selfTxt.IndexOf('buildOutputSet = Get-VtBuildWorkingOutputSet', $buildNormalizationPos)
+    $builderVersionPos = $selfTxt.IndexOf('buildBuilderVersion = [string]$buildLauncherInvocation.ExecutableProof.version', $buildNormalizationPos)
+    $receiptCreatePos = $selfTxt.IndexOf('buildReceipt = New-VtBuildReceipt', $buildNormalizationPos)
+    $receiptWritePos = $selfTxt.IndexOf('Write-VtBuildReceipt', $buildNormalizationPos)
+    $remoteExclusionGuardPos = $selfTxt.IndexOf('VMBLauncher remote deploy currently copies and verifies expected files', $buildNormalizationPos)
+    $buildOnlyPostGatePos = $selfTxt.IndexOf("receiptGate = Join-Path `$repoRoot 'qa\check_build_receipts.ps1'", $buildNormalizationPos)
+    $unitReachabilityPos = $selfTxt.IndexOf("unitReachabilityGate = Join-Path `$repoRoot 'qa\check_custom_unit_bundle_reachability.ps1'", $buildOnlyPostGatePos)
+    $oldMusketCompiledPos = $selfTxt.IndexOf("oldMusketCompiledGate = Join-Path `$repoRoot 'qa\check_cwv_old_musket_compiled_contract.ps1'", $buildOnlyPostGatePos)
+    $buildOnlyCompletePos = $selfTxt.IndexOf('BUILD-ONLY COMPLETE', $buildOnlyPostGatePos)
+    $bundleParityPos = $selfTxt.IndexOf('bundleParity = Test-TrackedBundleParity', $mainDispatchPos)
+    $receiptParityPos = $selfTxt.IndexOf('receiptPublicationSnapshot = Get-VtPublicationSnapshot', $mainDispatchPos)
+    $deployActionPos = $selfTxt.IndexOf("deployArgs = @('deploy', `$Mod)", $mainDispatchPos)
+    $publisherSkipBuildPos = $selfTxt.IndexOf('& $pubScript -Tag $tag -Mods $Mod -SkipBuild', $mainDispatchPos)
+    $finalAuthorizationPos = $selfTxt.LastIndexOf('publicationAuthorization = Get-LivePublicationAuthorization')
+    $authorizationRecordPos = $selfTxt.IndexOf('-PublicationAuthorizationJson $publicationAuthorizationJson', $mainDispatchPos)
+    $receiptHandoffPos = $selfTxt.IndexOf('-PublicationReceiptOutputPath $receiptPath', $mainDispatchPos)
+    $uploadActionPos = $selfTxt.IndexOf("uploadArgs = @('upload', `$Mod)", $mainDispatchPos)
+    Assert ($initialAuthorizationPos -ge 0 -and $initialAuthorizationPos -lt $cleanBuildPos) "publication authorization runs before the first build mutation"
+    Assert ($sourceBeforePos -ge 0 -and $sourceBeforePos -lt $cleanBuildPos -and $cleanBuildPos -lt $sourceAfterPos) "BuildOnly fingerprints runtime source immediately before and after the clean build"
+    Assert ($sourceAfterPos -lt $outputSetPos -and $outputSetPos -lt $receiptCreatePos) "BuildOnly enumerates the complete normalized output set after source stability and before receipt construction"
+    Assert ($builderVersionPos -gt $buildNormalizationPos -and $builderVersionPos -lt $receiptCreatePos) "BuildOnly records the exact approved builder version before receipt construction"
+    Assert ($receiptCreatePos -lt $receiptWritePos -and $receiptWritePos -lt $buildOnlyPostGatePos) "BuildOnly writes the deterministic schema-3 source/output receipt before post-build QA"
+    Assert ($cleanBuildPos -lt $buildNormalizationPos -and $buildNormalizationPos -lt $buildOnlyPostGatePos -and $buildNormalizationPos -lt $bundleParityPos) "exact-hash normalization runs after clean build and before BuildOnly QA or final parity"
+    Assert ($unitReachabilityPos -gt $buildOnlyPostGatePos -and $unitReachabilityPos -lt $oldMusketCompiledPos -and $oldMusketCompiledPos -lt $buildOnlyCompletePos) "BuildOnly runs CWV compiled geometry/material validation after custom-unit reachability and before success"
+    Assert ($buildNormalizationPos -lt $remoteExclusionGuardPos -and $remoteExclusionGuardPos -lt $buildOnlyPostGatePos -and $selfTxt.IndexOf('Re-run with -NoRemote', $remoteExclusionGuardPos) -ge 0) "artifact-exclusion publications require -NoRemote before any deploy"
+    Assert ($cleanBuildPos -lt $bundleParityPos -and $cleanBuildPos -lt $receiptParityPos -and
+        $bundleParityPos -lt $deployActionPos -and $receiptParityPos -lt $deployActionPos) "tracked or receipt clean-build parity is proven before any deploy"
+    Assert ($bundleParityPos -lt $publisherSkipBuildPos -and
+        $receiptParityPos -lt $publisherSkipBuildPos -and
+        [regex]::Matches($canonicalShipSource, [regex]::Escape('& $pubScript -Tag $tag -Mods $Mod -SkipBuild')).Count -eq 1) "canonical ship is the sole production -SkipBuild caller and invokes it only after authority parity"
+    Assert ($pubTxt.IndexOf('if ($SkipBuild) {') -ge 0 -and
+        $pubTxt.IndexOf('-SkipBuild requires the live VMBLauncher executable lease from canonical ship.ps1.') -gt
+            $pubTxt.IndexOf('if ($SkipBuild) {')) "publisher -SkipBuild requires the canonical caller's live executable lease"
+    Assert ($deployActionPos -lt $finalAuthorizationPos -and $finalAuthorizationPos -lt $uploadActionPos) "authorization is revalidated immediately before Workshop upload"
+    Assert ($authorizationRecordPos -lt $finalAuthorizationPos -and $finalAuthorizationPos -lt $uploadActionPos) "authorization evidence is recorded before the last-moment upload gate"
+    Assert ($authorizationRecordPos -lt $receiptHandoffPos -and $receiptHandoffPos -lt $finalAuthorizationPos) "publisher hosts the short-lived receipt before the last-moment upload gate"
+    Assert ($selfTxt.IndexOf("'--publication-receipt', `$receiptPath", $mainDispatchPos) -ge 0) "launcher upload receives the GitHub-hosted publication receipt"
+    Assert ($selfTxt.IndexOf("@('all', `$Mod)") -lt 0) "ship never uses the atomic all action that can upload before bundle parity"
+    Assert ($authorizationRecordPos -ge 0) "release manifest receives publication authorization evidence"
+    $publisherSource = [System.IO.File]::ReadAllText((Join-Path $selfRepoRoot 'tools\publish-release\publish-release.ps1'), [System.Text.Encoding]::UTF8)
+    $callerJsonPos = $publisherSource.IndexOf('$callerAuthorization = $PublicationAuthorizationJson | ConvertFrom-Json')
+    $publisherLivePos = $publisherSource.IndexOf('$liveAuthorization = Get-LivePublicationAuthorization')
+    $publisherMatchPos = $publisherSource.IndexOf('Test-PublicationEvidenceMatchesLive')
+    $publisherPreparationPos = $publisherSource.IndexOf('$manifestVerdict = Test-ReleaseManifest')
+    $publisherReceiptPos = $publisherSource.IndexOf('New-WorkshopPublicationReceipt')
+    $publisherZipBindingPos = $publisherSource.IndexOf('Test-ReleaseZipSnapshot')
+    $publisherMutationPos = $publisherSource.IndexOf('Publish-GitHubReleaseAssetsById')
+    $launcherLeasePos = $selfTxt.IndexOf('launcherExecutableLease = Enter-VmbLauncherExecutableLease', $mainDispatchPos)
+    $launcherCapabilityPos = $selfTxt.IndexOf('Assert-VmbLauncherPublicationCapability', $mainDispatchPos)
+    $launcherLeaseExitPos = $selfTxt.LastIndexOf('Exit-VmbLauncherExecutableLease -Lease $launcherExecutableLease')
+    $transactionLeaseExitPos = $selfTxt.LastIndexOf('Exit-VmbMachineTransactionLease -Lease $transactionLease')
+    Assert ($callerJsonPos -ge 0 -and $callerJsonPos -lt $publisherLivePos -and $publisherLivePos -lt $publisherMatchPos) "publisher independently re-queries live authorization before accepting caller correlation JSON"
+    Assert ($publisherPreparationPos -lt $publisherLivePos -and $publisherLivePos -lt $publisherReceiptPos -and $publisherReceiptPos -lt $publisherMutationPos) "publisher re-queries live authorization after preparation and immediately before receipt/release mutation"
+    Assert ($publisherZipBindingPos -ge 0 -and $publisherZipBindingPos -lt $publisherMutationPos) "publisher binds immutable zip entries to authority-selected bundle hashes before release mutation"
+    Assert ($launcherLeasePos -ge 0 -and $launcherLeasePos -lt $launcherCapabilityPos -and
+        $launcherCapabilityPos -lt $authorizationRecordPos) "ship leases the exact launcher before probing capabilities or mutating a release"
+    Assert ($uploadActionPos -ge 0 -and $uploadActionPos -lt $launcherLeaseExitPos -and
+        $launcherLeaseExitPos -lt $transactionLeaseExitPos) "ship holds the executable lease through upload and releases it before the transaction lease"
+    Assert ($selfTxt.IndexOf('Get-VmbLauncherVersion -LauncherPath $launcher', $mainDispatchPos) -lt 0 -and
+        $selfTxt.IndexOf('& $launcher', $mainDispatchPos) -lt 0 -and
+        $selfTxt.IndexOf('-FilePath $launcher', $mainDispatchPos) -lt 0) "main ship path has no free-path launcher execution or post-build version lookup"
+    Assert ($selfTxt.IndexOf('$isFirstUploadBootstrap = ($publishedId -eq ''0'')', $mainDispatchPos) -ge 0) "ship recognizes the explicit published_id=0 bootstrap lane"
+    Assert ($selfTxt.IndexOf('Receipt authority does not support first-upload bootstrap', $mainDispatchPos) -ge 0) "receipt authority cannot enter the tracked first-upload bootstrap lane"
+    Assert ($selfTxt.IndexOf('if ($deploymentPolicy.ShouldDeploy) {', $deployActionPos - 100) -ge 0) "deployment policy gates subscribed deploy and skips bootstrap/publication-only targets"
+    $deploymentPolicyPos = $selfTxt.IndexOf('$deploymentPolicy = Get-ShipDeploymentPolicy', $mainDispatchPos)
+    $quickMainPos = $selfTxt.IndexOf($quickInvocation, $mainDispatchPos)
+    Assert ($deploymentPolicyPos -ge 0 -and $quickMainPos -ge 0 -and $deploymentPolicyPos -lt $quickMainPos) "subscription state selects publication mode before expensive QA or launcher work"
+    Assert ($selfTxt.IndexOf("Mode = 'publication-only'", $mainDispatchPos) -lt 0) "publication-only mode is produced only by the tested deployment-policy helper"
+    Assert ($selfTxt.IndexOf('New-Item', $deploymentPolicyPos) -lt 0) "canonical ship never creates a Steam-managed Workshop content directory"
+    Assert ($selfTxt.IndexOf('Test-ShipUploadEvidencePolicy', $uploadActionPos) -gt $uploadActionPos) "upload result is checked through the receipt-aware evidence policy"
+    Assert ($selfTxt.IndexOf('Bootstrap did not write exactly one positive published_id', $mainDispatchPos) -ge 0 -and
+        $selfTxt.IndexOf('-ResolveBootstrapId $bootstrapIdResolver', $uploadActionPos) -ge 0) "first-upload bootstrap supplies the tested post-launch assigned-ID resolver"
+    Assert ($publisherSource.IndexOf('published_id=0 is accepted only for a one-mod canonical first-upload receipt handoff') -ge 0) "publisher constrains zero-ID release mutation to the exact receipt handoff"
+    Assert ($selfTxt.IndexOf('BOOTSTRAP COMPLETE - NOT TEST READY', $uploadActionPos) -ge 0) "first-upload bootstrap stops before live-test labeling and readiness output"
+    Assert ($selfTxt.IndexOf('The machine-global claim remains held', $uploadActionPos) -ge 0) "first-upload bootstrap retains its claim until the ID-only reconciliation merges"
+    Assert ($selfTxt.IndexOf('ModDirectory = "$Mod"', $mainDispatchPos) -ge 0) "card refresh receives the exact source-directory stream identity"
+    Assert ($selfTxt.IndexOf('StreamIdentity = "$streamIdentity"', $mainDispatchPos) -ge 0) "card refresh receives the exact display/stream identity"
+    Assert ($selfTxt.IndexOf("if (`$Mod -match '_dev$'", $mainDispatchPos) -ge 0) "mirrored dev titles gain an explicit Dev stream discriminator"
+
+    # --- issue #1328: exception-pin repoint (step 5b) -----------------------
+    # Planted-drift fixture: every consumed pin shape for the shipped mod is
+    # stale ('aaaa...'), a sibling mod pin shares hashtables with it, and both
+    # deliberately-historical sections carry the SAME stale value that must
+    # survive untouched.
+    $pinStale = 'a' * 40
+    $pinOther = 'd' * 40
+    $pinNew = 'b' * 40
+    $pinArrA = 'e' * 40
+    $pinArrB = 'f' * 40
+    $pinFixture = @"
+@{
+    LegacyMarkerFamilyModTrees = @{
+        wt_dev='$pinStale'
+        gut_dev=@(
+            '$pinArrA'
+            '$pinArrB'
+        )
+    }
+    LegacySourceTrees = @(
+        @{ ModId = 'wt_dev'; Version = '0.0.1-beta'; RootTree = '$pinOther'; ModTree = '$pinStale'; Reason = 'fixture' }
+    )
+    ReceiptFamilyOverrides = @(
+        @{ Marker='[wt:1]'; ModIds=@('wt','wt_dev'); ModTrees=@{wt='$pinOther';wt_dev='$pinStale'} }
+        @{ Marker='[gut:2]'; ModId='gut_dev'; ModTrees=@{gut_dev=@('$pinArrA','$pinArrB')} }
+    )
+    ReceiptRouteOverrides = @(
+        @{ ModId='wt_dev'; ModTree='$pinStale'; Marker='[wt:3]' }
+        @{ ModId='gut_dev'; ModTrees=@('$pinArrA','$pinArrB'); Marker='[gut:4]' }
+    )
+    ReceiptDiscoveryOverrides = @(
+        @{ ModId='wt_dev'; ModTree='$pinStale'; Marker='[wt:5]' }
+    )
+}
+"@
+    $pinPlanWt = Get-VtExceptionPinRepointPlan -ExceptionsText $pinFixture -ModId 'wt_dev' -DeployedTree $pinNew
+    Assert ($pinPlanWt.PinCount -eq 3 -and $pinPlanWt.Changed -and $pinPlanWt.RewriteCount -eq 3) "planted drift: all three consumed wt_dev pin shapes are rewritten"
+    Assert (($pinPlanWt.StaleTrees -join ',') -eq $pinStale) "planted drift: exactly the stale wt_dev tree is reported"
+    Assert ($pinPlanWt.NewText -match [regex]::Escape("ModTrees=@{wt='$pinOther';wt_dev='$pinNew'}")) "family hashtable repoints only the shipped mod's key"
+    Assert ($pinPlanWt.NewText -match [regex]::Escape("@{ ModId='wt_dev'; ModTree='$pinNew'; Marker='[wt:3]' }")) "route-override scalar pin is repointed"
+    Assert ($pinPlanWt.NewText -match [regex]::Escape("@{ ModId='wt_dev'; ModTree='$pinNew'; Marker='[wt:5]' }")) "discovery-override scalar pin is repointed"
+    Assert ($pinPlanWt.NewText -match [regex]::Escape("wt_dev='$pinStale'")) "LegacyMarkerFamilyModTrees history survives untouched"
+    Assert ($pinPlanWt.NewText -match [regex]::Escape("ModTree = '$pinStale'")) "LegacySourceTrees carried-forward pin survives untouched"
+    Assert (@($pinPlanWt.Unresolved).Count -eq 0) "planted drift resolves completely (re-parse verification)"
+    $pinPlanGut = Get-VtExceptionPinRepointPlan -ExceptionsText $pinFixture -ModId 'gut_dev' -DeployedTree $pinNew
+    Assert ($pinPlanGut.NewText -match [regex]::Escape("ModTrees=@{gut_dev=@('$pinNew')}")) "family multi-tree array collapses to the single deployed tree"
+    Assert ($pinPlanGut.NewText -match [regex]::Escape("ModTrees=@('$pinNew'); Marker='[gut:4]'")) "route-override multi-tree array collapses to the single deployed tree"
+    Assert ($pinPlanGut.NewText.Contains("'$pinArrA'") -and $pinPlanGut.NewText.Contains("'$pinArrB'")) "legacy multi-line array history survives untouched"
+    Assert (@($pinPlanGut.Unresolved).Count -eq 0) "gut_dev planted drift resolves completely"
+    $pinPlanRepeat = Get-VtExceptionPinRepointPlan -ExceptionsText $pinPlanWt.NewText -ModId 'wt_dev' -DeployedTree $pinNew
+    Assert ($pinPlanRepeat.PinCount -eq 3 -and -not $pinPlanRepeat.Changed -and $pinPlanRepeat.RewriteCount -eq 0) "repoint is idempotent: current pins produce a no-op plan"
+    $pinPlanNone = Get-VtExceptionPinRepointPlan -ExceptionsText $pinFixture -ModId 'no_such_mod' -DeployedTree $pinNew
+    Assert ($pinPlanNone.PinCount -eq 0 -and -not $pinPlanNone.Changed) "a mod with no exception pins produces a no-op plan"
+    $pinRejected = $false
+    try { Get-VtExceptionPinRepointPlan -ExceptionsText $pinFixture -ModId 'wt_dev' -DeployedTree 'not-a-tree' | Out-Null }
+    catch { $pinRejected = $true }
+    Assert $pinRejected "a malformed deployed tree is rejected before any rewrite"
+    $pinStepPos = $selfTxt.IndexOf('==> Repointing deployed-source exception pins', $mainDispatchPos)
+    $pinAuthorityPos = $selfTxt.IndexOf('$shipDeploymentManifest = Get-VtCardDeploymentManifest', $mainDispatchPos)
+    $pinUploadVerifyPos = $selfTxt.IndexOf('$uploadStatus = $receiptAcceptance.Status', $mainDispatchPos)
+    Assert ($pinUploadVerifyPos -ge 0 -and $pinUploadVerifyPos -lt $pinStepPos) "successful-path pin repoint follows Workshop verification"
+    $pinArmPos = $selfTxt.IndexOf('$publishedPinContext = $sourcePinHandoff.PublishedJson', $mainDispatchPos)
+    $pinFinallyPos = $selfTxt.LastIndexOf('if ($publishedPinContext -and -not $pinFinalizationAttempted)')
+    Assert ($receiptHandoffPos -lt $pinArmPos -and $pinArmPos -lt $finalAuthorizationPos) "publisher-owned reference handoff is consumed before final authorization, including on exceptions"
+    Assert ($pinFinallyPos -gt $statusLabelPos -and $pinFinallyPos -lt $transactionLeaseExitPos) "outer failure finalization remains inside the owning transaction lease"
+    Assert ($selfTxt.IndexOf('Invoke-VtPublishedPinFinalization -PublicationJson $publishedPinContext', $pinFinallyPos) -ge 0) "failure path invokes the same pin helper without entering live-test authority"
+    Assert ($pinStepPos -ge 0 -and $pinAuthorityPos -ge 0 -and $pinStepPos -lt $pinAuthorityPos) "pin repoint runs BEFORE the deployed-source authority resolution so this ship's labels already benefit"
+    Assert ($pinAuthorityPos -lt $statusLabelPos) "authority resolution still precedes status labeling"
+    Assert ($selfTxt.IndexOf('rev-parse "$sourceCommit`:$Mod/scripts/mods"', $mainDispatchPos) -ge 0) "pin repoint resolves the exact scripts/mods subtree the authority compares"
+    Assert ($selfTxt.IndexOf('SKIPPED ($($deploymentPolicy.Reason); exact receipt-gated publication)', $mainDispatchPos) -ge 0) "publication-only success summary reports the exact authority-neutral deployment reason"
+    Assert ($selfTxt.IndexOf('Pins         : {0}', $mainDispatchPos) -ge 0) "ship summary reports the pin-repoint outcome"
+
+    Write-Host ""
+    if ($script:__stpass) {
+        Write-Host "[ship.ps1 -SelfTest] OK -- ship helper contracts intact." -ForegroundColor Green
+        return 0
+    } else {
+        Write-Host "[ship.ps1 -SelfTest] FAILED -- ship helper regression." -ForegroundColor Red
+        return 2
+    }
+}
+
+if ($SelfTest) { exit (Invoke-ShipSelfTest) }
+if (-not $Mod) { Fail "Usage: ship.ps1 -Mod <name> [-AllowPublic] [-NoRemote] [-BuildOnly]  (or ship.ps1 -SelfTest)" }
+if ($SkipGitHub) {
+    Fail "-SkipGitHub is not permitted for Workshop publication because it would upload without release provenance. Use -BuildOnly for a nonpublishing local build."
+}
+if ($BuildOnly -and ($AllowPublic -or $NoRemote -or $SkipGitHub)) {
+    Fail "-BuildOnly cannot be combined with -AllowPublic, -NoRemote, or -SkipGitHub because it never deploys, uploads, or publishes."
+}
+if (-not $BuildOnly -and $NoClaim) {
+    Fail "-NoClaim is not permitted for Workshop publication. Acquire the machine-global mod/version claim first; -NoClaim remains available only for non-publishing -BuildOnly runs."
+}
+if ($EmergencyPublicationReason) {
+    Fail "-EmergencyPublicationReason is no longer accepted. Workshop publication requires exact clean default-branch HEAD, its merged PR, and successful hosted qa-gate."
+}
+
+# ---------------------------------------------------------------------------
+# Step 1: resolve paths + parse published_id and MOD_VERSION
+# ---------------------------------------------------------------------------
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$modDir   = Join-Path $repoRoot $Mod
+if (-not (Test-Path $modDir)) { Fail "Mod directory not found: $modDir" }
+
+# Issue #1412: select the build/publication lane from the exact inventory
+# contract before claims, launcher resolution, build, deploy, or upload. Receipt
+# authority may build and publish only; deploy/update/recovery consumption
+# remains disabled. Producer metadata grants no restore authority.
+try {
+    $bundleAuthorityEntry = Get-VtBuildReceiptInventoryEntry -RepoRoot $repoRoot -Mod $Mod
+    $bundleAuthorityPolicy = Assert-VtBundleAuthorityShipPreflight `
+        -Entry $bundleAuthorityEntry -BuildOnly:$BuildOnly
+}
+catch {
+    Fail "Bundle-authority preflight failed: $($_.Exception.Message)"
+}
+
+$transactionLease = $null
+$privateLauncherSettings = $null
+$launcherExecutableLease = $null
+$publishedPinContext = $null
+$pinFinalizationAttempted = $false
+$pinSummary = 'not run'
+try {
+    $transactionLease = Enter-VmbMachineTransactionLease `
+        -Action $(if ($BuildOnly) { 'build-only' } else { 'ship' }) `
+        -Mod $Mod `
+        -ProjectRoot $repoRoot
+
+$cfgPath = Join-Path $modDir 'itemV2.cfg'
+if (-not (Test-Path $cfgPath)) { Fail "itemV2.cfg not found: $cfgPath" }
+# Read as UTF-8 explicitly -- PS 5.1 Get-Content -Raw uses the system code page.
+$cfgTxt = [System.IO.File]::ReadAllText($cfgPath, [System.Text.Encoding]::UTF8)
+if ($cfgTxt -notmatch 'published_id\s*=\s*(\d+)L') {
+    Fail "No published_id found in $cfgPath (mod not yet uploaded to Workshop?)"
+}
+$publishedId = $matches[1]
+$isFirstUploadBootstrap = ($publishedId -eq '0')
+if ($isFirstUploadBootstrap -and
+    [string]$bundleAuthorityPolicy.Authority -ceq 'receipt') {
+    Fail 'Receipt authority does not support first-upload bootstrap. Bootstrap under tracked authority, reconcile the assigned ID, then migrate in a separately reviewed transaction.'
+}
+$workshopRoot = 'C:\Program Files (x86)\Steam\steamapps\workshop\content\552500'
+$deployDir = if ($isFirstUploadBootstrap) { $null } else { Join-Path $workshopRoot $publishedId }
+$workshopLog = 'C:\Program Files (x86)\Steam\logs\workshop_log.txt'
+$deploymentPolicy = Get-ShipDeploymentPolicy `
+    -PublishedId $publishedId `
+    -DeployDirectoryExists ([bool]($deployDir -and (Test-Path -LiteralPath $deployDir -PathType Container))) `
+    -BundleAuthority ([string]$bundleAuthorityPolicy.Authority) `
+    -NoRemote:$NoRemote -BuildOnly:$BuildOnly
+if ($deploymentPolicy.Mode -eq 'publication-only') {
+    Write-Host ("  NOTICE -- Workshop item {0} uses exact receipt-gated publication-only mode and will skip every deploy target: {1}." -f $publishedId, $deploymentPolicy.Reason) -ForegroundColor Yellow
+}
+
+# ---------------------------------------------------------------------------
+# Preflight (issue #344): refuse to ship while ANY itemV2.cfg carries a wrong or
+# colliding published_id. An upload with a crossed id HIJACKS another mod's
+# Workshop item (2026-07-05: gut_dev's cfg transiently carried ct_dev's id and
+# the ship pushed gut content onto ct_dev's item). Same check the pre-commit
+# gate runs, moved to BEFORE ugc_tool ever sees a cfg.
+# ---------------------------------------------------------------------------
+$idCheck = Join-Path $repoRoot 'qa\check_published_ids.ps1'
+if (Test-Path $idCheck) {
+    & $idCheck
+    if ($LASTEXITCODE -ne 0) {
+        Fail "check_published_ids FAILED -- fix the cfg id(s) above before shipping. A crossed id hijacks another mod's Workshop item (issue #344)."
+    }
+}
+
+$luaPath    = Join-Path $modDir "scripts\mods\$Mod\$Mod.lua"
+$luaRoot    = Split-Path $luaPath -Parent
+$modVersion = '(unknown)'
+# The in-game load line uses the mod's INTERNAL short id (e.g. "gut", "gt", "ct"),
+# which is not the directory name. Prefer the main Lua marker; when bootstrapping
+# delegates its banner, resolve the one unique marker across the root Lua files.
+# Only a marker-free mod may retain the historical directory-name fallback.
+# This must stay before any issue lifecycle mutation. The actual refresher stays
+# after labeling because it deliberately inventories only ready-labeled cards.
+$loadTagResolution = Get-VtLoadTagResolution -MainLuaPath $luaPath -LuaRoot $luaRoot -FallbackTag $Mod
+if (-not $loadTagResolution.Success) {
+    Fail "Cannot resolve one runtime LOAD tag for '$Mod': $($loadTagResolution.Reason)."
+}
+$loadTag = $loadTagResolution.LoadTag
+$streamIdentity = $Mod
+if (Test-Path $luaPath) {
+    $luaTxt = [System.IO.File]::ReadAllText($luaPath, [System.Text.Encoding]::UTF8)
+    if ($luaTxt -match 'MOD_VERSION\s*=\s*"([^"]+)"') { $modVersion = $matches[1] }
+}
+if ($modVersion -eq '(unknown)') {
+    Fail "No MOD_VERSION found in $luaPath."
+}
+if ($cfgTxt -match 'title[ \t]*=[ \t]*"([^"]+)"') {
+    $streamIdentity = $matches[1]
+    $versionSuffix = " v$modVersion"
+    if ($streamIdentity.EndsWith($versionSuffix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $streamIdentity = $streamIdentity.Substring(0, $streamIdentity.Length - $versionSuffix.Length)
+    }
+}
+# Some historical dev cfg titles intentionally mirror the public display title.
+# The exact source directory remains the stream authority, so make that identity
+# explicit for live-test cards without changing Workshop metadata.
+if ($Mod -match '_dev$' -and $streamIdentity -notmatch '(?i)[ \t]+Dev$') {
+    $streamIdentity += ' Dev'
+}
+$changelogPath = Join-Path $modDir 'CHANGELOG.md'
+if (-not (Test-Path -LiteralPath $changelogPath -PathType Leaf)) {
+    Fail "CHANGELOG not found: $changelogPath"
+}
+$changelogText = [System.IO.File]::ReadAllText($changelogPath, [System.Text.Encoding]::UTF8)
+$releaseIdentity = Test-ReleaseIdentity -SourceVersion $modVersion -ChangelogText $changelogText
+if (-not $releaseIdentity.Ok) {
+    Fail "$($releaseIdentity.Message). The first CHANGELOG release must exactly equal MOD_VERSION (an optional leading display 'v' is allowed)."
+}
+
+# ---------------------------------------------------------------------------
+# SHIP/VERSION CLAIM GATE (parallel-session collision guard). Full rationale +
+# usage: tools/ship/CLAIMS.md. Runs BEFORE the QA gates and before any
+# build/deploy/upload so a missing/mismatched claim fails fast and cheap.
+#
+# Parallel Claude sessions on this machine repeatedly allocated the SAME next
+# MOD_VERSION and uploaded competing bundles (cosmetics 0.9.143 + 0.9.145, wt
+# 0.12.273-beta, wt_dev 0.12.274-dev), each forcing a reconciliation build.
+# claim.ps1 is an atomic per-mod lock that also records the allocated version;
+# this gate refuses to ship unless a LIVE claim exists whose version and owner
+# match the source MOD_VERSION and current task. Its own claim is auto-released
+# on ship success.
+#
+# -NoClaim is limited to non-publishing -BuildOnly. Every Workshop publication
+# must hold the machine-global claim; missing tooling and every coordination
+# failure are fail-closed before VMB can build, deploy, or upload.
+# ---------------------------------------------------------------------------
+if ($NoClaim) {
+    Write-Host ""
+    Write-Host "  !! -NoClaim: skipping the ship/version claim gate. Safe ONLY in a solo" -ForegroundColor Yellow
+    Write-Host "     session -- parallel sessions can collide on MOD_VERSION and upload" -ForegroundColor Yellow
+    Write-Host "     competing bundles (see tools/ship/CLAIMS.md)." -ForegroundColor Yellow
+}
+else {
+    $claimScript = Join-Path $PSScriptRoot 'claim.ps1'
+    if (-not (Test-Path -LiteralPath $claimScript)) {
+        Fail "Claim broker missing at $claimScript. Refusing an unguarded publication; restore tools/ship/claim.ps1."
+    }
+    else {
+        & $claimScript -Mod $Mod -Verify -ExpectedVersion $modVersion -Quiet
+        $claimExit = $LASTEXITCODE
+        switch ($claimExit) {
+            0 { Write-Host "  OK -- live ship claim for $Mod matches v$modVersion." -ForegroundColor Green }
+            3 { Fail "No live ship claim for '$Mod'. Run:  .\tools\ship\claim.ps1 -Mod $Mod  (it allocates the next version -- set MOD_VERSION to the value it prints, then re-ship). See tools/ship/CLAIMS.md." }
+            4 { Fail "Ship claim for '$Mod' does not match the source MOD_VERSION ($modVersion). Another session likely allocated a different version. Reconcile: .\tools\ship\claim.ps1 -Mod $Mod -Release  then re-claim and re-bump. See tools/ship/CLAIMS.md." }
+            5 { Fail "Ship claim for '$Mod' is STALE (older than 24h). Coordinate before breaking the reservation; then re-claim/reconcile the version and re-ship. See tools/ship/CLAIMS.md." }
+            6 { Fail "Ship claim for '$Mod' has the right version but belongs to another task/worktree. This process cannot consume it. Coordinate with the owner or wait for stale recovery; do not use -NoClaim while parallel work is active." }
+            default { Fail "Ship claim verification failed (claim.ps1 exit $claimExit). See tools/ship/CLAIMS.md." }
+        }
+    }
+}
+
+# Weapon-history catalogs claim one canonical current source. Fail fast before
+# expensive QA, then close the same window again at build/release boundaries.
+Assert-WtHistorySourceFreshness -Mod $Mod -RepoRoot $repoRoot -Phase 'preflight'
+
+$commitProbe = Invoke-NativeCapture { & git -C $repoRoot rev-parse HEAD }
+if ($commitProbe.ExitCode -ne 0 -or $commitProbe.Lines.Count -eq 0) {
+    Fail "Cannot resolve the invoking checkout's source commit at $repoRoot. Shipping requires a git worktree identity (issue #647)."
+}
+$sourceCommit = ([string]$commitProbe.Lines[-1]).Trim()
+
+$publicationAuthorization = $null
+if (-not $BuildOnly) {
+    try {
+        if ([string]$bundleAuthorityPolicy.Authority -ceq 'tracked') {
+            # Preserve the established tracked contract: select the complete
+            # immutable Git-blob snapshot before any build mutation.
+            $commitPublicationSnapshot = Get-VtPublicationSnapshot `
+                -RepoRoot $repoRoot -SourceCommit $sourceCommit -Mod $Mod
+        }
+        else {
+            $commitPublicationContext = Get-VtPublicationSnapshotInventoryContext `
+                -RepoRoot $repoRoot -SourceCommit $sourceCommit -Mod $Mod
+            if ([string]$commitPublicationContext.Authority -cne
+                [string]$bundleAuthorityPolicy.Authority) {
+                throw "Working inventory authority differs from exact source-commit authority."
+            }
+            # Bind immutable cfg/version/preview/source metadata before the
+            # build. Receipt output is captured only after the clean build.
+            $commitPublicationSnapshot = Get-PublicationCommitSnapshot `
+                -RepoRoot $repoRoot -SourceCommit $sourceCommit -Mod $Mod `
+                -AllowEmptyBundleFiles
+        }
+    }
+    catch {
+        Fail "Cannot read exact publication metadata from source commit $sourceCommit`: $($_.Exception.Message)"
+    }
+    if ([string]::IsNullOrWhiteSpace("$($commitPublicationSnapshot.PublishedId)")) {
+        Fail "Exact source commit has no published_id in $Mod/itemV2.cfg."
+    }
+    if ("$($commitPublicationSnapshot.PublishedId)" -ne "$publishedId") {
+        Fail "Mutable itemV2.cfg published_id '$publishedId' differs from exact source-commit value '$($commitPublicationSnapshot.PublishedId)'."
+    }
+
+    # A publishing checkout must already be the immutable reviewed tree.
+    # BuildOnly intentionally accepts development changes so it can generate
+    # the artifact that will be committed in the PR.
+    $cleanProbe = Invoke-NativeCapture { & git -C $repoRoot status --porcelain --untracked-files=all }
+    if ($cleanProbe.ExitCode -ne 0) {
+        Fail "Cannot verify release-worktree cleanliness: $($cleanProbe.Lines -join ' | ')"
+    }
+    if ($cleanProbe.Lines.Count -gt 0) {
+        Fail "Release worktree is not clean at exact source commit $sourceCommit. Commit, review, and merge every source and bundle artifact before shipping."
+    }
+
+    try {
+        $publicationAuthorization = Get-LivePublicationAuthorization `
+            -Repo 'Ensrick/vermintide-2-tweaker' `
+            -SourceCommit $sourceCommit
+    }
+    catch {
+        Fail "Publication authorization could not be established: $($_.Exception.Message)"
+    }
+    if (-not $publicationAuthorization.Ok) {
+        Fail "Publication authorization FAILED: $($publicationAuthorization.Message). Workshop upload requires exact clean live default-branch HEAD, its merged PR, and successful hosted qa-gate."
+    }
+    Write-Host ("  OK -- publication authorization: {0}" -f $publicationAuthorization.Message) -ForegroundColor Green
+
+    # Current-server recovery follows exact source/claim/hosted authorization,
+    # precedes build, and cannot convert metadata repair into publication proof.
+    . (Join-Path $PSScriptRoot 'current-source-pin-recovery.ps1')
+    try {
+        $currentPinResult = Invoke-VtCurrentSourcePinReconciliation -RepoRoot $repoRoot `
+            -SourceCommit $sourceCommit -TransactionLease $transactionLease
+    }
+    catch { Fail "Current GitHub source-pin recovery failed before build: $($_.Exception.Message)" }
+    Write-Host ("  Source-pin preflight: {0}" -f $currentPinResult.Summary) -ForegroundColor Yellow
+    if ($currentPinResult.RequiresMetadataPR) {
+        Fail 'Current source pins require a reviewed metadata PR before this ship can continue. No build or Workshop upload was attempted; the claim is retained.'
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Promotion red gate (issue #327): shipping one of the five STABLE split dirs
+# must pass qa/check_promotion.ps1 BLOCKING (defense-in-depth against player-facing
+# lifecycle metadata, unsanctioned pre-release suffixes, and version monotonicity vs the
+# stable CHANGELOG). Advisory scans warned for weeks while two promotions each
+# leaked a checklist step to public subscribers - hence a hard gate. A
+# user-NAMED suffixed public version (issue #328 ruling) ships with
+# $env:VT2_SUFFIX_OK = '1'.
+# ---------------------------------------------------------------------------
+$promoGate = Join-Path $repoRoot 'qa\check_promotion.ps1'
+$stableSplitDirs = @('chaos_wastes_tweaker', 'crafting_in_modded', 'general_tweaker', 'gui_tweaker', 'verminious_dreams_lighting')
+$devSplitDirs = @('chaos_wastes_tweaker_dev', 'crafting_in_modded_dev', 'general_tweaker_dev', 'gui_tweaker_dev', 'verminious_dreams_lighting_dev')
+$promotionStatus = Join-Path $repoRoot 'tools\promote\promotion-status.ps1'
+if (($stableSplitDirs -contains $Mod) -or ($devSplitDirs -contains $Mod)) {
+    if (-not (Test-Path -LiteralPath $promotionStatus -PathType Leaf)) {
+        Fail "Stranded-fix promotion report is missing: $promotionStatus"
+    }
+    Write-Host ''
+    Write-Host "==> Stranded-fix promotion report ($Mod)" -ForegroundColor Cyan
+    & $promotionStatus -Mod $Mod
+    if ($LASTEXITCODE -ge 2) {
+        Fail "promotion-status FAILED -- the per-ship stranded-fix report could not be produced. No build, deploy, or upload was attempted."
+    }
+}
+if (($stableSplitDirs -contains $Mod) -and (Test-Path $promoGate)) {
+    & $promoGate -Mod $Mod
+    if ($LASTEXITCODE -ne 0) {
+        Fail "check_promotion FAILED -- this stable/public target did not clear the promotion gate (issue #327). Fix the findings above (or VT2_SUFFIX_OK=1 for a user-named suffixed public version) and re-ship."
+    }
+}
+
+$globalLauncherSettings = Join-Path $env:APPDATA 'VMBLauncher\settings.json'
+if (-not (Test-Path -LiteralPath $globalLauncherSettings -PathType Leaf)) {
+    Fail "VMBLauncher settings not found: $globalLauncherSettings"
+}
+try {
+    $configuredProjectRoot = Get-ShipConfiguredProjectRoot -SettingsPath $globalLauncherSettings
+    $primaryWorktreeRoot = Get-ShipPrimaryWorktreeRoot -RepoRoot $repoRoot
+    $launcherResolution = Resolve-ShipLauncherPath `
+        -RepoRoot $repoRoot `
+        -ExplicitPath $env:VT2_SHIP_VMB_LAUNCHER `
+        -ConfiguredProjectRoot $configuredProjectRoot `
+        -PrimaryWorktreeRoot $primaryWorktreeRoot
+    $vmbRcResolution = Resolve-ShipVmbRcPath `
+        -RepoRoot $repoRoot `
+        -ExplicitPath $env:VT2_SHIP_VMBRC `
+        -ConfiguredProjectRoot $configuredProjectRoot `
+        -PrimaryWorktreeRoot $primaryWorktreeRoot
+}
+catch {
+    Fail $_.Exception.Message
+}
+$privateLauncherSettings = New-ShipPrivateLauncherSettings `
+    -SourceSettingsPath $globalLauncherSettings -ProjectRoot $repoRoot
+$launcherSettings = $privateLauncherSettings
+$launcher = $launcherResolution.Path
+try {
+    $launcherExecutableLease = Enter-VmbLauncherExecutableLease `
+        -LauncherPath $launcher -RequireDirectPath
+    $launcherCapability = Assert-VmbLauncherPublicationCapability `
+        -LauncherExecutableLease $launcherExecutableLease `
+        -WorkingDirectory $repoRoot `
+        -RequireReceiptAuthority:(-not $BuildOnly -and [string]$bundleAuthorityPolicy.Authority -ceq 'receipt') `
+        -RequireLocalDeployment:([bool]$deploymentPolicy.RequiresDeploymentReceipt)
+}
+catch {
+    Fail $_.Exception.Message
+}
+Write-Host ("VMBLauncher publication capability: PASS (v{0}, receipt schema 3, authority {1}, locked snapshot)" -f $launcherCapability.Version, $bundleAuthorityPolicy.Authority) -ForegroundColor DarkGray
+
+# ---------------------------------------------------------------------------
+# Headless red gate (issues #590/#591): exercise the same fast, host-runnable
+# QA tier used by local development before the launcher is allowed to build,
+# deploy, or upload anything.  Previously most QA ran only at commit/CI time,
+# so a direct ship could put a statically-invalid build on Workshop first.
+#
+# -Quick includes pure Lua 5.1 unit tests; -SkipLua skips only the slow advisory
+# luacheck pass.  Target lint keeps its established severity ladder: duplicate
+# hook errors block, heuristic warnings remain visible but non-blocking.
+# ---------------------------------------------------------------------------
+$quickGate = Join-Path $repoRoot 'qa\run_all.ps1'
+if (-not (Test-Path $quickGate)) {
+    Fail "Headless QA gate not found: $quickGate"
+}
+
+Write-Host ""
+Write-Host "==> Headless preflight (fast QA + Lua 5.1 units)" -ForegroundColor Cyan
+& $quickGate -Quick -SkipLua -SkipBundleAtomicity:$BuildOnly -SkipBuildReceipts:$BuildOnly -SkipCustomUnitBundleReachability:$BuildOnly -Quiet
+if ($LASTEXITCODE -ne 0) {
+    Fail "Headless QA FAILED -- no build, deploy, or upload was attempted (issue #591)."
+}
+
+$modLint = Join-Path $repoRoot 'tools\mod-lint\lint-mod.ps1'
+if (-not (Test-Path $modLint)) {
+    Fail "Target-mod lint gate not found: $modLint"
+}
+
+Write-Host ""
+Write-Host "==> Target-mod preflight lint ($Mod)" -ForegroundColor Cyan
+& $modLint $Mod -Quiet
+$modLintExit = $LASTEXITCODE
+if ($modLintExit -ge 2) {
+    Fail "Target-mod lint FAILED -- no build, deploy, or upload was attempted (issue #591)."
+}
+if ($modLintExit -eq 1) {
+    Write-Host "Target-mod lint reported advisory warnings; shipping may continue." -ForegroundColor Yellow
+}
+
+Write-Host ""
+$operationLabel = if ($BuildOnly) { 'Building bundle for' } else { 'Shipping' }
+Write-Host "==> $operationLabel $Mod  (v$modVersion, published_id $publishedId)" -ForegroundColor Cyan
+if ($isFirstUploadBootstrap -and -not $BuildOnly) {
+    Write-Host "    mode: constrained first-upload bootstrap (exact hosted receipt; ID-only write-back)" -ForegroundColor Yellow
+}
+elseif ($deploymentPolicy.Mode -eq 'publication-only' -and -not $BuildOnly) {
+    Write-Host "    mode: existing-item publication-only (exact receipt; no deploy claim)" -ForegroundColor Yellow
+}
+Write-Host "    repo root : $repoRoot"
+Write-Host "    launcher  : $launcher ($($launcherResolution.Source))"
+Write-Host "    .vmbrc    : $($vmbRcResolution.Path) ($($vmbRcResolution.Source))"
+Write-Host "    deploy dir: $(if ($deploymentPolicy.Mode -eq 'publication-only') { '(absent; publication-only upload)' } elseif ($deployDir) { $deployDir } else { '(not assigned until Steam creates the item)' })"
+if ($AllowPublic) { Write-Host "    --allow-public : ON (public Workshop item)" -ForegroundColor Yellow }
+if ($NoRemote)    { Write-Host "    --no-remote    : ON (skipping PC-B push)" }
+
+# ---------------------------------------------------------------------------
+# Step 2: clean build via VMBLauncher. Deploy and upload are deliberately
+# separate actions so the freshly generated bundle can be proven byte-identical
+# to the reviewed commit before either publication surface is mutated.
+# ---------------------------------------------------------------------------
+try {
+    # Issue #1278: BuildOnly intentionally consumes dirty source. Bind the
+    # generated root to both the exact raw bytes consumed by Stingray and the
+    # Git blobs that a later `git add` will commit. Take this snapshot only after
+    # every pre-build gate has completed.
+    $buildSourceSnapshotBefore = Get-VtBuildWorkingSourceMap -RepoRoot $repoRoot -Mod $Mod
+    $sourceReproducibilityBefore = Test-VtBuildWorkingSourceReproducibility `
+        -SourceMap $buildSourceSnapshotBefore
+    if (-not $sourceReproducibilityBefore.Ok) {
+        throw ($sourceReproducibilityBefore.Problems -join '; ')
+    }
+}
+catch {
+    Fail "Cannot fingerprint BuildOnly source before the clean build: $($_.Exception.Message)"
+}
+
+Assert-WtHistorySourceFreshness -Mod $Mod -RepoRoot $repoRoot -Phase 'pre-build'
+
+$launcherArgs = @('build', $Mod, '--clean')
+$launcherArgs += @('--config', $launcherSettings)
+
+Write-Host ""
+Write-Host "==> VMBLauncher $($launcherArgs -join ' ')" -ForegroundColor Cyan
+# Do NOT pipe the launcher's pipeline output through Select-Object/head -- that
+# trips the PowerShell broken-pipe quirk that reports $LASTEXITCODE = -1 on a
+# clean exit. The wrapper stages validated machine-local tooling and the
+# ship-private config binds the exact ProjectRoot before source validation.
+try {
+    $buildLauncherInvocation = Invoke-WithShipVmbRc -RepoRoot $repoRoot -Resolution $vmbRcResolution -Action {
+            # Ask the launcher which mod it resolved from the private config.
+            # Abort before build (therefore before deploy/upload) if root,
+            # version, source commit, or Workshop identity differs from Step 1.
+            $info = Invoke-ShipLauncherNoWindow -LauncherExecutableLease $launcherExecutableLease `
+                -ArgumentList @('info', $Mod, '--no-banner', '--config', $launcherSettings)
+            if ($info.ExitCode -ne 0) {
+                throw "VMBLauncher identity probe failed (exit $($info.ExitCode)): $($info.Lines -join ' | ')"
+            }
+            $resolvedModDir = $null
+            foreach ($line in $info.Lines) {
+                if ($line -match '^Mod folder:\s*(.+?)\s*$') { $resolvedModDir = $matches[1]; break }
+            }
+            if (-not $resolvedModDir) {
+                throw "VMBLauncher identity probe did not report 'Mod folder': $($info.Lines -join ' | ')"
+            }
+
+            $resolvedLuaPath = Join-Path $resolvedModDir "scripts\mods\$Mod\$Mod.lua"
+            $resolvedCfgPath = Join-Path $resolvedModDir 'itemV2.cfg'
+            if (-not (Test-Path -LiteralPath $resolvedLuaPath) -or -not (Test-Path -LiteralPath $resolvedCfgPath)) {
+                throw "VMBLauncher resolved incomplete source at '$resolvedModDir'."
+            }
+            $resolvedLua = [System.IO.File]::ReadAllText($resolvedLuaPath, [System.Text.Encoding]::UTF8)
+            $resolvedVersion = if ($resolvedLua -match 'MOD_VERSION\s*=\s*"([^"]+)"') { $matches[1] } else { '(unknown)' }
+            $resolvedCfg = [System.IO.File]::ReadAllText($resolvedCfgPath, [System.Text.Encoding]::UTF8)
+            $resolvedPublishedId = if ($resolvedCfg -match 'published_id\s*=\s*(\d+)L') { $matches[1] } else { '(unknown)' }
+            $resolvedRoot = Split-Path $resolvedModDir -Parent
+            $resolvedCommitProbe = Invoke-NativeCapture { & git -C $resolvedRoot rev-parse HEAD }
+            $resolvedCommit = if ($resolvedCommitProbe.ExitCode -eq 0 -and $resolvedCommitProbe.Lines.Count -gt 0) {
+                ([string]$resolvedCommitProbe.Lines[-1]).Trim()
+            } else { '(unknown)' }
+
+            $identity = Test-ShipIdentityValues `
+                -ExpectedModDir $modDir -ResolvedModDir $resolvedModDir `
+                -ExpectedVersion $modVersion -ResolvedVersion $resolvedVersion `
+                -ExpectedCommit $sourceCommit -ResolvedCommit $resolvedCommit `
+                -ExpectedPublishedId $publishedId -ResolvedPublishedId $resolvedPublishedId
+            if (-not $identity.Ok) {
+                throw "Ship identity invariant FAILED: $($identity.Message). No build/deploy/upload was attempted."
+            }
+            Write-Host "  OK -- ProjectRoot, MOD_VERSION, source commit, and published_id match the invoking checkout." -ForegroundColor Green
+
+            $launcherRun = Invoke-ShipLauncherNoWindow -LauncherExecutableLease $launcherExecutableLease `
+                -ArgumentList $launcherArgs -ReplayOutput
+            $launcherExit = $launcherRun.ExitCode
+            if ($launcherExit -ne 0) {
+                throw "VMBLauncher 'build $Mod' exited $launcherExit (see output above)."
+            }
+            return $launcherRun
+    }
+}
+catch {
+    Fail $_.Exception.Message
+}
+
+# Clean Stingray builds can emit inventoried SDK tool-only artifacts whose own
+# package declares BUNDLE=false. Canonicalize only exact name+SHA policy matches
+# before any BuildOnly gate, authority parity check, deploy, or upload observes them.
+try {
+    $buildNormalization = Invoke-BuildOutputNormalization -RepoRoot $repoRoot -Mod $Mod
+}
+catch {
+    Fail $_.Exception.Message
+}
+
+try {
+    $buildSourceSnapshotAfter = Get-VtBuildWorkingSourceMap -RepoRoot $repoRoot -Mod $Mod
+    $sourceSnapshotComparison = Compare-VtBuildSourceMaps `
+        -Expected $buildSourceSnapshotBefore -Actual $buildSourceSnapshotAfter
+    if (-not $sourceSnapshotComparison.Ok) {
+        throw ("Runtime source changed while VMBLauncher was building: " +
+            ($sourceSnapshotComparison.Problems -join '; '))
+    }
+    $sourceReproducibilityAfter = Test-VtBuildWorkingSourceReproducibility `
+        -SourceMap $buildSourceSnapshotAfter
+    if (-not $sourceReproducibilityAfter.Ok) {
+        throw ($sourceReproducibilityAfter.Problems -join '; ')
+    }
+    $buildOutputSet = Get-VtBuildWorkingOutputSet `
+        -RepoRoot $repoRoot -Mod $Mod -SourceMap $buildSourceSnapshotAfter
+    if ($null -eq $buildLauncherInvocation -or
+        $null -eq $buildLauncherInvocation.ExecutableProof) {
+        throw 'Clean build did not return a process-bound VMBLauncher executable proof.'
+    }
+    $buildBuilderVersion = [string]$buildLauncherInvocation.ExecutableProof.version
+
+    if ($BuildOnly) {
+        $buildReceipt = New-VtBuildReceipt -Mod $Mod `
+            -SourceMap $buildSourceSnapshotAfter `
+            -OutputSet $buildOutputSet `
+            -BuilderVersion $buildBuilderVersion `
+            -NormalizationPolicy $buildNormalization.Policy
+        $buildReceiptPath = Write-VtBuildReceipt -RepoRoot $repoRoot -Mod $Mod -Receipt $buildReceipt
+        Write-Host "  OK -- exact dirty-source/complete-output schema-3 receipt written: $buildReceiptPath" -ForegroundColor Green
+    }
+    else {
+        # Untouched schema-2 receipts remain admissible during shadow migration;
+        # their historical root Git-blob proof stays independently validated.
+        $buildRootProof = Get-VtBuildWorkingRootProof -RepoRoot $repoRoot -Mod $Mod
+        $buildReceiptPath = Get-VtBuildReceiptPath -RepoRoot $repoRoot -Mod $Mod
+        if (-not (Test-Path -LiteralPath $buildReceiptPath -PathType Leaf)) {
+            throw "Reviewed BuildOnly receipt is missing: $buildReceiptPath"
+        }
+        $reviewedReceiptText = [System.IO.File]::ReadAllText($buildReceiptPath, [System.Text.Encoding]::UTF8)
+        $reviewedReceipt = ConvertFrom-VtBuildReceiptJson -Json $reviewedReceiptText
+        $minimumReceiptSchema = if ([string]$bundleAuthorityPolicy.Authority -ceq 'receipt') { 3 } else { 2 }
+        $receiptProof = Test-VtBuildReceiptProof -Receipt $reviewedReceipt `
+            -ExpectedMod $Mod `
+            -SourceMap $buildSourceSnapshotAfter `
+            -RootProof $buildRootProof `
+            -OutputSet $buildOutputSet `
+            -NormalizationPolicy $buildNormalization.Policy `
+            -ExpectedBuilderVersion $buildBuilderVersion `
+            -MinimumSchema $minimumReceiptSchema
+        if (-not $receiptProof.Ok) {
+            throw ("Reviewed BuildOnly receipt no longer matches the clean build: " +
+                ($receiptProof.Problems -join '; '))
+        }
+        Write-Host "  OK -- reviewed BuildOnly receipt matches exact source and rebuilt normalized output." -ForegroundColor Green
+    }
+}
+catch {
+    Fail "$($_.Exception.Message). No deploy or upload was attempted. Re-run BuildOnly after the final source edit."
+}
+
+# VMBLauncher remote deploy currently copies and verifies expected files but
+# cannot remove or reject stale extras. Never claim PC-B was reconciled for a
+# mod whose canonical output intentionally excludes a previously emitted file.
+if (-not $BuildOnly -and $deploymentPolicy.RemoteDeploy -and
+    (($buildNormalization.Removed + $buildNormalization.Absent) -gt 0)) {
+    Fail ("$Mod has a build-output exclusion, but VMBLauncher remote deploy cannot reconcile stale extra files. " +
+        "Re-run with -NoRemote. Local deploy and Workshop publication remain exact; PC-B stays intentionally unrefreshed until remote exact-set reconciliation is supported.")
+}
+
+if ($BuildOnly) {
+    $receiptGate = Join-Path $repoRoot 'qa\check_build_receipts.ps1'
+    if (-not (Test-Path -LiteralPath $receiptGate -PathType Leaf)) {
+        Fail "Post-build receipt gate not found: $receiptGate"
+    }
+    & $receiptGate -Mod $Mod -Quiet
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Build completed, but the generated receipt did not match the exact working source/normalized-output snapshot. No deploy or upload was attempted."
+    }
+    $bundleGate = Join-Path $repoRoot 'qa\check_release_bundle_atomicity.ps1'
+    if (-not (Test-Path -LiteralPath $bundleGate -PathType Leaf)) {
+        Fail "Post-build bundle atomicity gate not found: $bundleGate"
+    }
+    & $bundleGate -Quiet
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Build completed, but the generated root bundle did not satisfy release atomicity. No deploy or upload was attempted."
+    }
+    $unitReachabilityGate = Join-Path $repoRoot 'qa\check_custom_unit_bundle_reachability.ps1'
+    if (-not (Test-Path -LiteralPath $unitReachabilityGate -PathType Leaf)) {
+        Fail "Post-build custom-unit reachability gate not found: $unitReachabilityGate"
+    }
+    # Exit zero also includes optional dependency SKIP. Keep the owner's verdict
+    # visible and do not convert it into a verified-resource claim in the footer.
+    & $unitReachabilityGate
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Build completed, but one or more custom unit resources are still absent from the compiled bundle. No deploy or upload was attempted."
+    }
+    if ($Mod -eq 'character_weapon_variants') {
+        $oldMusketCompiledGate = Join-Path $repoRoot 'qa\check_cwv_old_musket_compiled_contract.ps1'
+        if (-not (Test-Path -LiteralPath $oldMusketCompiledGate -PathType Leaf)) {
+            Fail "Post-build Old Musket compiled-contract gate not found: $oldMusketCompiledGate"
+        }
+        & $oldMusketCompiledGate -Quiet
+        if ($LASTEXITCODE -ne 0) {
+            Fail "Build completed, but the compiled Old Musket geometry/material contract failed. No deploy or upload was attempted."
+        }
+    }
+    Write-Host ""
+    Write-Host "BUILD-ONLY COMPLETE -- bundle and exact schema-3 source/output receipt generated; receipt, atomicity, and applicable compiled contracts verified; custom-unit reachability status is reported above (SKIP is not verification); no deploy, upload, GitHub release, or lifecycle edit was attempted." -ForegroundColor Green
+    exit 0
+}
+
+if ([string]$bundleAuthorityPolicy.Authority -ceq 'tracked') {
+    $bundleParity = Test-TrackedBundleParity -RepoRoot $repoRoot -Mod $Mod
+    if (-not $bundleParity.Ok) {
+        Write-Host "  TRACKED BUNDLE PARITY FAILED:" -ForegroundColor Red
+        $bundleParity.Problems | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+        Fail "The clean build does not exactly reproduce $Mod/bundleV2 at reviewed commit $sourceCommit. Commit the generated bundle, pass PR QA, merge it, and ship that exact default-branch commit."
+    }
+}
+else {
+    try {
+        $receiptPublicationSnapshot = Get-VtPublicationSnapshot `
+            -RepoRoot $repoRoot `
+            -SourceCommit $sourceCommit `
+            -Mod $Mod `
+            -ExpectedBuilderVersion $buildBuilderVersion
+        $receiptBuildComparison = @(Compare-VtBundleOutputSets `
+            -Expected $receiptPublicationSnapshot.OutputSet `
+            -Actual $buildOutputSet `
+            -ExpectedLabel 'receipt snapshot output' `
+            -ActualLabel 'clean build output' `
+            -RequireLength $true)
+        if ($receiptBuildComparison.Count -gt 0) {
+            throw ($receiptBuildComparison -join '; ')
+        }
+    }
+    catch {
+        Fail "The clean build is not the exact committed schema-3 receipt output for $Mod`: $($_.Exception.Message)"
+    }
+}
+$postBuildClean = Invoke-NativeCapture { & git -C $repoRoot status --porcelain --untracked-files=all }
+if ($postBuildClean.ExitCode -ne 0 -or $postBuildClean.Lines.Count -gt 0) {
+    Fail "The release worktree changed during the clean build. No deploy or upload was attempted; reviewed source and authority-selected output must remain byte-exact."
+}
+$publicationParityLabel = if ([string]$bundleAuthorityPolicy.Authority -ceq 'tracked') {
+    'tracked HEAD bundle'
+} else {
+    'committed schema-3 receipt output'
+}
+Write-Host "  OK -- clean build exactly reproduces the $publicationParityLabel." -ForegroundColor Green
+
+$deployOk = $false
+if ($deploymentPolicy.ShouldDeploy) {
+    $deployArgs = @('deploy', $Mod)
+    if ($NoRemote) { $deployArgs += '--no-remote' }
+    $deployArgs += @('--config', $launcherSettings)
+    $deploymentReceiptPath = $null
+    try {
+        if ($deploymentPolicy.RequiresDeploymentReceipt) {
+            $localDeploymentEvidence = New-VtHostedLocalDeploymentReceipt -RepoRoot $repoRoot -Mod $Mod -Version $modVersion `
+                -SourceCommit $sourceCommit -PublishedId $publishedId -ExpectedBuilderVersion $buildBuilderVersion -TransactionLease $transactionLease
+            $deploymentReceiptPath = Write-VtLocalDeploymentReceiptHandoff -Bytes $localDeploymentEvidence.Bytes
+            $deployArgs += @('--deployment-receipt', $deploymentReceiptPath)
+        }
+        Write-Host ""
+        Write-Host "==> VMBLauncher $($deployArgs -join ' ')" -ForegroundColor Cyan
+        Invoke-WithShipVmbRc -RepoRoot $repoRoot -Resolution $vmbRcResolution -Action {
+            $deployRun = Invoke-ShipLauncherNoWindow -LauncherExecutableLease $launcherExecutableLease -ArgumentList $deployArgs -ReplayOutput
+            if ($deployRun.ExitCode -ne 0) {
+                throw "VMBLauncher 'deploy $Mod' exited $($deployRun.ExitCode) (see output above)."
+            }
+        }
+    }
+    catch {
+        Fail $_.Exception.Message
+    }
+    finally {
+        if ($deploymentReceiptPath) { Remove-Item -LiteralPath $deploymentReceiptPath -Force -ErrorAction SilentlyContinue }
+    }
+}
+elseif ($deploymentPolicy.Mode -eq 'bootstrap') {
+    Write-Host ""
+    Write-Host "==> Skipping deploy verification until Steam assigns the first Workshop ID." -ForegroundColor DarkGray
+}
+else {
+    Write-Host ""
+    Write-Host "==> Skipping local and remote deploy: $($deploymentPolicy.Reason); publication will be proven by exact receipt + Workshop result." -ForegroundColor Yellow
+}
+
+# ---------------------------------------------------------------------------
+# Mid-ship id-stomp detector (issue #344): in the 2026-07-05 incident the cfg
+# was CORRECT when this script read it (the banner printed the canonical id)
+# and a foreign id was written into it DURING the launcher window, so ugc_tool
+# uploaded to the wrong Workshop item while the ship summary looked clean.
+# Re-read the cfg and compare against the ship-start id; scream if it moved.
+# ---------------------------------------------------------------------------
+$cfgTxtAfter = [System.IO.File]::ReadAllText($cfgPath, [System.Text.Encoding]::UTF8)
+if ($cfgTxtAfter -match 'published_id\s*=\s*(\d+)L' -and $matches[1] -ne $publishedId) {
+    Fail ("published_id CHANGED mid-ship: read $publishedId at ship start, cfg now carries $($matches[1]). " +
+          "ugc_tool may have uploaded to the WRONG Workshop item -- check workshop_log.txt for BOTH ids " +
+          "and re-verify both items' content before doing anything else (issue #344).")
+}
+
+# ---------------------------------------------------------------------------
+# Step 3: VERIFY DEPLOY -- byte-exact bundles; newline-normalized .mod descriptor
+# ---------------------------------------------------------------------------
+$bundleDir = Join-Path $modDir 'bundleV2'
+if (-not (Test-Path $bundleDir)) { Fail "bundleV2 missing at $bundleDir (build did not produce output)" }
+if ($deploymentPolicy.ShouldDeploy) {
+    if ($deploymentPolicy.RequiresDeploymentReceipt) {
+        try {
+            $exactDeploy = Assert-VtReceiptLocalDeploymentOutput -Snapshot $localDeploymentEvidence.Snapshot -DeployDirectory $deployDir -Mod $Mod
+            $deployOk = $true
+            Write-Host "  OK -- $($exactDeploy.Count) receipt-bound local files; exact names, lengths and SHA-256 (including descriptor)." -ForegroundColor Green
+        }
+        catch { Fail "Receipt local deploy verification failed: $($_.Exception.Message)" }
+    }
+    else {
+    Write-Host ""
+    Write-Host "==> Verifying deploy (SHA256 bundleV2 vs Workshop content folder)" -ForegroundColor Cyan
+    if (-not (Test-Path $deployDir)) {
+        Fail "Deploy folder missing: $deployDir -- are you SUBSCRIBED to this mod on Workshop? (deploy can't create it)"
+    }
+
+    $mismatches = @()
+    $checked    = 0
+    $normalizedDescriptors = 0
+    foreach ($f in Get-ChildItem $bundleDir -File) {
+        $target = Join-Path $deployDir $f.Name
+        if (-not (Test-Path $target)) {
+            $mismatches += "  $($f.Name): MISSING in deploy folder"
+            continue
+        }
+        $srcHash = (Get-FileHash -Algorithm SHA256 -Path $f.FullName).Hash
+        $dstHash = (Get-FileHash -Algorithm SHA256 -Path $target).Hash
+        $checked++
+        if ($srcHash -ne $dstHash) {
+            if (Test-DeployFileEquivalent -SourcePath $f.FullName -DeployedPath $target) {
+                $normalizedDescriptors++
+                Write-Host "  OK -- $($f.Name): descriptor differs only by LF/CRLF line endings." -ForegroundColor DarkGreen
+            }
+            else {
+                $mismatches += "  $($f.Name): src $($srcHash.Substring(0,12)).. != deploy $($dstHash.Substring(0,12)).."
+            }
+        }
+    }
+
+    $deployOk = ($mismatches.Count -eq 0)
+    if (-not $deployOk) {
+        Write-Host "  DEPLOY HASH MISMATCH (Steam likely reconciled the folder back to a cached manifest):" -ForegroundColor Red
+        $mismatches | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+        Fail "Deploy verification failed: $($mismatches.Count) file(s) differ between $bundleDir and $deployDir."
+    }
+    $normalizationNote = if ($normalizedDescriptors -gt 0) {
+        "; $normalizedDescriptors textual .mod descriptor(s) line-ending-equivalent"
+    } else { '' }
+    Write-Host ("  OK -- {0} file(s) verified (bundles byte-exact{1})." -f $checked, $normalizationNote) -ForegroundColor Green
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Step 4: re-authorize, record release provenance, then upload only.
+# Branch head and hosted QA can change while the clean build/deploy runs. The
+# second read closes that window and bundle parity is rechecked immediately
+# before ugc_tool can mutate Workshop.
+# ---------------------------------------------------------------------------
+try {
+    $publicationAuthorization = Get-LivePublicationAuthorization `
+        -Repo 'Ensrick/vermintide-2-tweaker' `
+        -SourceCommit $sourceCommit
+}
+catch {
+    Fail "Final publication authorization could not be established: $($_.Exception.Message)"
+}
+if (-not $publicationAuthorization.Ok) {
+    Fail "Final publication authorization FAILED: $($publicationAuthorization.Message). No Workshop upload was attempted."
+}
+Write-Host ("  OK -- final publication authorization: {0}" -f $publicationAuthorization.Message) -ForegroundColor Green
+Assert-WtHistorySourceFreshness -Mod $Mod -RepoRoot $repoRoot -Phase 'pre-release'
+
+# Persist independently queried authorization evidence before Workshop mutation.
+$tag       = "mods-$(Get-Date -Format yyyy-MM-dd)"
+$pubScript = Join-Path $repoRoot 'tools\publish-release\publish-release.ps1'
+if (-not (Test-Path $pubScript)) { Fail "publish-release.ps1 not found at $pubScript" }
+$publicationAuthorizationJson = $publicationAuthorization.Evidence | ConvertTo-Json -Depth 10 -Compress
+$receiptPath = Join-Path ([System.IO.Path]::GetTempPath()) ("vt2-workshop-receipt-" + [guid]::NewGuid().ToString('N') + '.json')
+$preparedPinContext = $null
+if (-not $isFirstUploadBootstrap) {
+    # Prepare exact identity BEFORE mutation; arm only after a successful
+    # publisher confirmation. An intent/prepared receipt is not publication proof.
+    $pinInventory = Import-PowerShellDataFile -LiteralPath (Join-Path $repoRoot 'tools\mod-inventory.psd1')
+    $pinEntry = @($pinInventory.Mods | Where-Object { [string]$_.Dir -ceq $Mod })
+    if ($pinEntry.Count -ne 1) { Fail "Cannot resolve one exception-pin ModId for $Mod." }
+    $pinTreeCapture = Invoke-NativeCapture { & git -C $repoRoot rev-parse "$sourceCommit`:$Mod/scripts/mods" }
+    if ($pinTreeCapture.ExitCode -ne 0 -or $pinTreeCapture.Lines.Count -ne 1) {
+        Fail "Cannot resolve the exact published scripts/mods tree for $Mod."
+    }
+    $preparedPinContext = New-VtPublishedPinContext -RepoRoot $repoRoot -Mod $Mod -ModId $pinEntry[0].ModId `
+        -SourceCommit $sourceCommit -ModTree ([string]$pinTreeCapture.Lines[0]).Trim() `
+        -Version $modVersion -PublishedId $publishedId -ReleaseTag $tag
+}
+
+Write-Host ""
+Write-Host "==> Recording authorized GitHub release (tag $tag) -- THIS mod only (issues #436/#493/#724)" -ForegroundColor Cyan
+$sourcePinHandoff = @{ PreparedJson = $preparedPinContext; PublishedJson = $null }
+try {
+    & $pubScript -Tag $tag -Mods $Mod -SkipBuild `
+        -PublicationAuthorizationJson $publicationAuthorizationJson `
+        -PublicationReceiptOutputPath $receiptPath `
+        -SourcePinHandoff $sourcePinHandoff `
+        -LauncherPath $launcherResolution.Path `
+        -LauncherSource $launcherResolution.Source `
+        -LauncherApprovalAnchor $launcherResolution.ApprovalAnchor `
+        -LauncherExecutableLease $launcherExecutableLease
+}
+catch {
+    if (Test-Path -LiteralPath $receiptPath) {
+        Remove-Item -LiteralPath $receiptPath -Force -ErrorAction SilentlyContinue
+    }
+    Fail "publish-release.ps1 failed before Workshop upload: $($_.Exception.Message)"
+}
+finally {
+    # Reference handoff survives receipt-copy/reporting/publisher-cleanup failure.
+    # Do not validate or report here: that could replace the primary exception.
+    $publishedPinContext = $sourcePinHandoff.PublishedJson
+}
+if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
+    Fail "publish-release.ps1 did not return the exact GitHub-hosted publication receipt. No Workshop upload was attempted."
+}
+$githubStatus = "OK ($tag)"
+if (-not $isFirstUploadBootstrap -and -not $publishedPinContext) {
+    Fail 'Publisher returned without confirmed GitHub source-pin provenance. No Workshop upload was attempted.'
+}
+
+# The release-recording call can take long enough for default HEAD to move.
+# Close that final window after the record exists and immediately before upload.
+try {
+    $publicationAuthorization = Get-LivePublicationAuthorization `
+        -Repo 'Ensrick/vermintide-2-tweaker' `
+        -SourceCommit $sourceCommit
+}
+catch {
+    if (Test-Path -LiteralPath $receiptPath) {
+        Remove-Item -LiteralPath $receiptPath -Force -ErrorAction SilentlyContinue
+    }
+    Fail "Last-moment publication authorization could not be established: $($_.Exception.Message)"
+}
+if (-not $publicationAuthorization.Ok) {
+    Remove-Item -LiteralPath $receiptPath -Force -ErrorAction SilentlyContinue
+    Fail "Last-moment publication authorization FAILED: $($publicationAuthorization.Message). No Workshop upload was attempted."
+}
+Assert-WtHistorySourceFreshness -Mod $Mod -RepoRoot $repoRoot -Phase 'pre-upload'
+# The launcher now reconstructs source proofs from sourceCommit blobs and pins
+# the staged cfg/content/preview/tool before comparing them. Do not insert a
+# mutable worktree hash/cleanliness precheck here: it would recreate the
+# check/use window this boundary exists to remove.
+
+$uploadArgs = @('upload', $Mod)
+if ($AllowPublic) { $uploadArgs += '--allow-public' }
+$uploadArgs += @('--publication-receipt', $receiptPath, '--config', $launcherSettings)
+Write-Host ""
+Write-Host "==> VMBLauncher $($uploadArgs -join ' ')" -ForegroundColor Cyan
+$uploadFailure = $null
+$publicationReceiptAccepted = $false
+$bootstrapIdResolver = $null
+if ($isFirstUploadBootstrap) {
+    $bootstrapIdResolver = {
+        $cfgAfterBootstrap = [System.IO.File]::ReadAllText($cfgPath, [System.Text.Encoding]::UTF8)
+        $assigned = [regex]::Matches($cfgAfterBootstrap, 'published_id\s*=\s*([1-9][0-9]*)L')
+        if ($assigned.Count -ne 1) {
+            throw 'Bootstrap did not write exactly one positive published_id to itemV2.cfg.'
+        }
+        return $assigned[0].Groups[1].Value
+    }
+}
+try {
+    $receiptAcceptance = Invoke-WithShipVmbRc -RepoRoot $repoRoot -Resolution $vmbRcResolution -Action {
+        # Capture is inside the canonical configuration boundary, immediately
+        # before the one existing launcher invocation. Finally closes the
+        # read-only observer on launcher, bootstrap, parser, and success paths.
+        return Invoke-VtWorkshopUploadEvidence -Path $workshopLog -PublishedId $publishedId -ResolveBootstrapId $bootstrapIdResolver -UploadAction {
+            $uploadRun = Invoke-ShipLauncherNoWindow -LauncherExecutableLease $launcherExecutableLease -ArgumentList $uploadArgs -ReplayOutput
+            if ($uploadRun.ExitCode -ne 0) {
+                throw "VMBLauncher 'upload $Mod' exited $($uploadRun.ExitCode) (see output above)."
+            }
+        }
+    }
+    $publicationReceiptAccepted = $true
+}
+catch {
+    $uploadFailure = $_.Exception.Message
+}
+finally {
+    if (Test-Path -LiteralPath $receiptPath) {
+        Remove-Item -LiteralPath $receiptPath -Force -ErrorAction SilentlyContinue
+    }
+}
+if ($uploadFailure) {
+    Fail $uploadFailure
+}
+if ($isFirstUploadBootstrap) {
+    $publishedId = $receiptAcceptance.PublishedId
+    $deployDir = Join-Path $workshopRoot $publishedId
+    Write-Host "  Bootstrap assigned Workshop ID $publishedId. Commit the ID-only itemV2.cfg change before the next ship." -ForegroundColor Yellow
+}
+
+# ---------------------------------------------------------------------------
+# Step 5: VERIFY UPLOAD -- consume the bounded terminal transaction evidence
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "==> Verifying upload (workshop_log.txt)" -ForegroundColor Cyan
+$uploadStatus = $receiptAcceptance.Status
+$matchedLine = $receiptAcceptance.OutcomeLine
+Write-Host "    $($receiptAcceptance.FinishLine)"
+
+$uploadEvidence = Test-ShipUploadEvidencePolicy `
+    -UploadStatus $uploadStatus `
+    -DeploymentMode $deploymentPolicy.Mode `
+    -DeployVerified $deployOk `
+    -PublicationReceiptAccepted $publicationReceiptAccepted
+if (-not $uploadEvidence.Ok) {
+    Fail ($uploadEvidence.Problems -join '; ')
+}
+
+switch ($uploadStatus) {
+    'UPLOADED' {
+        Write-Host "  OK -- new content pushed to Workshop." -ForegroundColor Green
+        Write-Host "    $matchedLine"
+    }
+    'NOCHANGE' {
+        if ($deploymentPolicy.Mode -eq 'publication-only') {
+            Write-Host "  OK -- server already had the exact receipt-gated staged bundle (publication-only no-op upload)." -ForegroundColor Green
+        }
+        else {
+            Write-Host "  OK -- server already had this exact bundle (no-op upload; deploy hashes matched)." -ForegroundColor Green
+        }
+        Write-Host "    $matchedLine"
+    }
+    default {
+        Fail "No complete bounded Workshop transaction for item $publishedId -- inspect $workshopLog."
+    }
+}
+
+# A successful published_id=0 transaction creates the Workshop identity but is
+# deliberately not a completed release. The reviewed commit and provisional
+# GitHub manifest still carry ID 0, there was no subscribed deploy target to
+# verify, and the ID-only source change has not passed PR review yet. Stop
+# before issue lifecycle mutation and before any "test ready" banner. Keep the
+# machine-global claim so a parallel worktree cannot create a second Workshop
+# item for the same mod while the ID-only reconciliation is in flight.
+if ($isFirstUploadBootstrap) {
+    Write-Host ""
+    Write-Host "================ BOOTSTRAP COMPLETE - NOT TEST READY ================" -ForegroundColor Yellow
+    Write-Host ("  Mod                  : {0}" -f $Mod)
+    Write-Host ("  Version              : v{0}" -f $modVersion)
+    Write-Host ("  Assigned Workshop ID : {0}" -f $publishedId)
+    Write-Host ("  Source cfg           : {0}" -f $cfgPath)
+    Write-Host "  GitHub release       : provisional; manifest still records published_id 0" -ForegroundColor Yellow
+    Write-Host "  Lifecycle labels     : unchanged; this build is not ready for in-game testing" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Commit only the assigned-ID itemV2.cfg change, pass protected PR QA," -ForegroundColor Yellow
+    Write-Host "  merge it, then run the ordinary canonical ship from the new live" -ForegroundColor Yellow
+    Write-Host "  default-branch HEAD. The machine-global claim remains held until that" -ForegroundColor Yellow
+    Write-Host "  reconciliation completes; do not release or override it early." -ForegroundColor Yellow
+    Write-Host "=====================================================================" -ForegroundColor Yellow
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Step 5b: reconcile GitHub source provenance before live-test authority.
+# Failure finalization calls the SAME helper, but never reaches readiness.
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "==> Repointing deployed-source exception pins (issue #1328)" -ForegroundColor Cyan
+try {
+    $pinFinalizationAttempted = $true
+    $pinResult = Invoke-VtPublishedPinFinalization -PublicationJson $publishedPinContext -TransactionLease $transactionLease
+    $pinSummary = $pinResult.Summary
+}
+catch {
+    Write-VtPinFinalizationWarning ("Exception-pin reconciliation failed: {0}. Preserve this provenance for a reviewed repair: {1}" -f $_.Exception.Message, $publishedPinContext)
+    $pinSummary = 'ERRORED -- reconcile source pins in a reviewed PR'
+}
+
+# Resolve immutable deployed-source authority before any tracker mutation.
+# A Workshop upload may already have succeeded, so failure here cannot roll it
+# back; it does, however, fail closed for every newly-ready label transition.
+$shipLiveTestAuthority = $null
+try {
+    $shipDeploymentManifest = Get-VtCardDeploymentManifest -Repository 'Ensrick/vermintide-2-tweaker'
+    $shipSourceAuthority = Get-VtCardSourceAuthority -RepoRoot $repoRoot -DeploymentManifest $shipDeploymentManifest
+    $shipLiveTestAuthority = New-VtLiveTestCardAuthority -Source $shipSourceAuthority -DeploymentManifest $shipDeploymentManifest
+    Write-Host ("  Deployed live-test authority: {0} immutable release record(s)." -f @($shipLiveTestAuthority.Records).Count) -ForegroundColor DarkGray
+}
+catch {
+    Write-Host ("  WARNING: deployed live-test authority unavailable ({0}); no issue may enter a ready lifecycle state." -f $_.Exception.Message) -ForegroundColor Yellow
+}
+
+# ---------------------------------------------------------------------------
+# Step 6: STATUS-LABEL the shipped issues (issue #326 mechanization)
+# ---------------------------------------------------------------------------
+# Doctrine (PROJECT_STANDARDS section 11): when a fix or probe ships, the
+# matching status label (not-started / verify-fix / diagnostics-armed) goes on the issue in
+# the SAME pass. This step mechanizes it: harvest every #N referenced in the
+# CHANGELOG entry just shipped and add the label via gh. Heuristics, printed
+# per issue so the user can correct a misjudgment by hand:
+#   * Dev-stream ships only (-dev/-alpha/-beta/-rc suffix). A clean stable
+#     promotion re-ships work that was labeled when its dev build shipped.
+#   * Loc-sweep entries (header matches the localization-doctrine pattern) are
+#     skipped: their #N refs are tag CONTEXT, not shipped work (same heuristic
+#     as qa/check_issue_status_labels.ps1).
+#   * [docs]/[tooling] entries never mutate tracker labels.
+#   * Label choice is ENTRY-level and explicit: exactly one of [not-started],
+#     [verify-fix], or [diagnostics-armed]/[diag]. Prose never supplies a
+#     default, and missing/mixed intent fails closed. Co-op routing is derived
+#     from the validated CURRENT LIVE TEST card.
+#     A MIXED entry (fix for one issue, probe for
+#     another) gets one label for all refs -- correct the odd one out by hand.
+#   * CLOSED and non-existent numbers are skipped (footnote "#2"-style false
+#     positives resolve to nothing).
+# This step NEVER fails the ship -- the upload already succeeded. Any labeling
+# problem is a yellow warning for manual follow-up.
+Write-Host ""
+Write-Host "==> Status-labeling shipped issues (PROJECT_STANDARDS section 11 / issue #326)" -ForegroundColor Cyan
+$labelSummary = @()
+try {
+    $ghRepo = 'Ensrick/vermintide-2-tweaker'
+    if ($modVersion -eq '(unknown)') {
+        Write-Host "  WARNING: MOD_VERSION unknown -- cannot tell dev from stable; label the shipped issues by hand." -ForegroundColor Yellow
+        $labelSummary += 'SKIPPED (version unknown) -- label by hand'
+    }
+    elseif (-not (Test-DevStreamVersion $modVersion)) {
+        Write-Host "  clean-version (stable) ship -- skipping: labels were applied when the dev build shipped." -ForegroundColor DarkGray
+        $labelSummary += 'skipped (stable promotion)'
+    }
+    else {
+        $ghReady = $false
+        if (Get-Command gh -ErrorAction SilentlyContinue) {
+            # Probe guard (issue #489): an unauthenticated gh writes to stderr,
+            # which under redirection + EAP=Stop threw on PS 5.1 and skipped
+            # labeling with a misleading "gh unavailable" warning.
+            $ghReady = ((Invoke-NativeProbe { gh auth status }) -eq 0)
+        }
+        $clPath = Join-Path $modDir 'CHANGELOG.md'
+        if (-not $ghReady) {
+            Write-Host "  WARNING: gh not installed/authenticated -- label the shipped issues by hand (verify-fix / diagnostics-armed)." -ForegroundColor Yellow
+            $labelSummary += 'SKIPPED (gh unavailable) -- label by hand'
+        }
+        elseif (-not (Test-Path $clPath)) {
+            Write-Host "  WARNING: no CHANGELOG.md at $clPath -- nothing to parse; label by hand if this ship fixed an issue." -ForegroundColor Yellow
+            $labelSummary += 'SKIPPED (no CHANGELOG.md)'
+        }
+        else {
+            # Top `## ` entry = the entry being shipped (CHANGELOGs are newest-first).
+            $clLines = [System.IO.File]::ReadAllText($clPath, [System.Text.Encoding]::UTF8) -split "`r?`n"
+            $top = Get-TopChangelogEntry -Lines $clLines
+            if (-not $top) {
+                Write-Host "  WARNING: no '## ' entry in CHANGELOG.md -- nothing to label." -ForegroundColor Yellow
+                $labelSummary += 'SKIPPED (no CHANGELOG entry)'
+            }
+            else {
+                $clHeader = $top.Header
+                $plan = Get-ShipLabelPlan -Header $top.Header -Entry $top.Entry
+                if ($plan.Skip) {
+                    $reason = switch ($plan.Skip) {
+                        'loc-sweep' { 'its refs are tag context, not shipped work' }
+                        'no-refs' { 'the entry has no issue references' }
+                        'missing-lifecycle-marker' { 'the header must name exactly one of [not-started], [verify-fix], or [diagnostics-armed]/[diag]' }
+                        'ambiguous-lifecycle-marker' { 'the header names more than one lifecycle' }
+                        'retired-lifecycle-marker' { '[verify-fix-coop] is retired; use [verify-fix] and a co-op CURRENT LIVE TEST card' }
+                        'tooling-entry' { 'tooling/docs issues are verified autonomously and never enter the in-game queue' }
+                        default { 'unknown label-plan rejection' }
+                    }
+                    $color = if ($plan.Skip -in @('loc-sweep', 'no-refs')) { 'DarkGray' } else { 'Yellow' }
+                    Write-Host "  $($plan.Skip) entry ($clHeader) -- $reason; no issue labels mutated." -ForegroundColor $color
+                    $labelSummary += "skipped ($($plan.Skip) entry)"
+                }
+                else {
+                    $statusLabel = $plan.Label
+                    $issueRefs = $plan.Refs
+                    if ($issueRefs.Count -gt 0) {
+                        Write-Host "  entry : $clHeader"
+                        Write-Host "  label : $statusLabel (entry-level intent -- correct by hand if the entry is mixed fix+diag)"
+                        foreach ($n in $issueRefs) {
+                            $json = & gh issue view $n --repo $ghRepo --json state,labels,body,comments,url 2>$null
+                            $meta = $null
+                            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($json)) {
+                                try { $meta = $json | ConvertFrom-Json } catch { $meta = $null }
+                            }
+                            if (-not $meta) {
+                                Write-Host ("  - #{0}: not an issue (footnote / PR / typo) -- skipped" -f $n) -ForegroundColor DarkGray
+                                continue
+                            }
+                            if ($meta.state -ne 'OPEN') {
+                                Write-Host ("  - #{0}: {1} -- skipped" -f $n, $meta.state) -ForegroundColor DarkGray
+                                continue
+                            }
+                            $existing = @()
+                            if ($meta.labels) { $existing = @($meta.labels | ForEach-Object { $_.name }) }
+                            $decision = Get-ShipIssueTransitionDecision -Existing $existing -Requested $statusLabel -CoopRequired ([bool]$plan.CoopRequired) -RepositoryLabels @($plan.RepositoryLabels) -Comments $meta.comments -Body ([string]$meta.body) -Authority $shipLiveTestAuthority
+                            if (-not $decision.Ok) {
+                                $reasonText = switch ($decision.Reason) {
+                                    'invalid-current-live-test-card' { 'newest exact CURRENT LIVE TEST card is missing or fails deployed-source authority' }
+                                    'live-card-authority-unavailable' { 'immutable deployed-source authority is unavailable' }
+                                    'unevidenced-verify-downgrade' { 'verify-to-diagnostics downgrade lacks failed-verification evidence in the selected replacement method' }
+                                    'tooling-issue-not-auto-labeled' { 'tooling/docs work never receives live-test labels from ship automation' }
+                                    'blocked-issue-not-ready' { 'blocked issues must remain not-started and outside the live-test queue' }
+                                    default { "transition policy rejected '$($decision.Reason)'" }
+                                }
+                                Write-Host ("  ! #{0}: {1}; no labels mutated" -f $n, $reasonText) -ForegroundColor Yellow
+                                $labelSummary += ("#{0} BLOCKED {1}" -f $n, $decision.Reason)
+                                continue
+                            }
+
+                            $selection = $decision.Selection
+                            $edit = $decision.Edit
+                            $isRepositoryOnly = $decision.IsRepositoryOnly
+                            $removeLabels = @($edit.Remove)
+                            # The validated card is authoritative. A non-ready target strips
+                            # stale coop-required; a co-op ready card adds it only after the
+                            # card records solo as passed/exhausted.
+                            $coopEdit = $decision.CoopEdit
+                            $wantCoopQualifier = $coopEdit.Want
+                            if ($coopEdit.Remove) { $removeLabels += 'coop-required' }
+                            $editArgs = @()
+                            if ($edit.Add) { $editArgs += @('--add-label', $edit.Target) }
+                            if ($coopEdit.Add) { $editArgs += @('--add-label', 'coop-required') }
+                            foreach ($labelToRemove in ($removeLabels | Select-Object -Unique)) { $editArgs += @('--remove-label', $labelToRemove) }
+                            $editOk = $true
+                            if ($editArgs.Count -gt 0) {
+                                if ($coopEdit.Add) {
+                                    & gh label create 'coop-required' --repo $ghRepo --color 'D93F0B' --description 'Testing or diagnostics requires 2+ players' --force 2>$null | Out-Null
+                                    if ($LASTEXITCODE -ne 0) { $editOk = $false }
+                                }
+                                if ($editOk) {
+                                    $transitionEvidence = "Lifecycle transition evidence: shipped entry '$clHeader' validated the newest exact CURRENT LIVE TEST card; target lifecycle '$($edit.Target)'."
+                                    & gh issue comment $n --repo $ghRepo --body $transitionEvidence 2>$null | Out-Null
+                                    $editOk = ($LASTEXITCODE -eq 0)
+                                }
+                                if ($editOk) {
+                                    & gh issue edit $n --repo $ghRepo @editArgs 2>$null | Out-Null
+                                    $editOk = ($LASTEXITCODE -eq 0)
+                                }
+                            }
+                            if ($editOk) {
+                                $qualifierText = if ($wantCoopQualifier) { " + 'coop-required'" } else { '' }
+                                Write-Host ("  + #{0}: lifecycle '{1}'{2}; competing lifecycle labels removed" -f $n, $edit.Target, $qualifierText) -ForegroundColor Green
+                                $methodSummary = if ($isRepositoryOnly) { 'autonomous method validated' } else { 'runtime method validated' }
+                                $labelSummary += ("#{0} ->{1}{2} ({3})" -f $n, $edit.Target, $(if ($wantCoopQualifier) { '+coop-required' } else { '' }), $methodSummary)
+                            } else {
+                                Write-Host ("  ! #{0}: lifecycle evidence comment or issue edit failed; inspect before retry" -f $n) -ForegroundColor Yellow
+                                $labelSummary += ("#{0} FAILED lifecycle transition" -f $n)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+catch {
+    Write-Host "  WARNING: status-labeling step errored ($($_.Exception.Message)) -- label the shipped issues by hand." -ForegroundColor Yellow
+    $labelSummary += 'ERRORED -- label by hand'
+}
+
+# ---------------------------------------------------------------------------
+# Step 6b: refresh pinned CURRENT LIVE TEST card version surfaces (issue #1102)
+# ---------------------------------------------------------------------------
+# The 2026-08-02 audit found every sampled pinned card naming a superseded
+# build, so testers failed the [id:LOAD] confirmation on correct builds.
+# After the workshop_log has confirmed this upload, refresh-cards.ps1 first
+# reconciles every source-authorized stream in one atomic per-card plan. That
+# prevents a stale sibling build surface from deadlocking the subsequent exact
+# just-shipped-stream refresh. The second pass then rewrites the just-shipped
+# mod's fresh Workshop ManifestID as well as its version surfaces. Step text,
+# expected needles, topology, and unrelated prose are never touched, and
+# unparseable cards are skipped and reported. Runs for BOTH
+# streams: unlike step 6's lifecycle labels (applied when the dev build
+# shipped), version surfaces go stale on every upload, dev or stable. Like
+# step 6, this step NEVER fails the ship -- the upload already succeeded.
+# Keep the invocation after step 6: a newly promoted issue is not in the ready
+# inventory until labeling succeeds. LOAD-tag resolution and conflict handling
+# already ran before step 6, and this splat receives that exact resolved value.
+Write-Host ""
+Write-Host "==> Refreshing pinned live-test card versions (issue #1102)" -ForegroundColor Cyan
+$cardSummary = 'not run'
+try {
+    $cardGhReady = $false
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        $cardGhReady = ((Invoke-NativeProbe { gh auth status }) -eq 0)
+    }
+    if (-not $cardGhReady) {
+        Write-Host "  WARNING: gh not installed/authenticated -- refresh the pinned cards by hand (tools\ship\refresh-cards.ps1)." -ForegroundColor Yellow
+        $cardSummary = 'SKIPPED (gh unavailable) -- refresh by hand'
+    }
+    else {
+        $refreshScript = Join-Path $PSScriptRoot 'refresh-cards.ps1'
+        if (-not (Test-Path -LiteralPath $refreshScript -PathType Leaf)) {
+            Write-Host "  WARNING: refresh-cards.ps1 not found at $refreshScript -- refresh the pinned cards by hand." -ForegroundColor Yellow
+            $cardSummary = 'SKIPPED (script missing)'
+        }
+        else {
+            # Cross-mod cards must advance atomically. Running this source-
+            # authoritative pass before the exact shipped-stream pass prevents
+            # one stale sibling from making every later single-stream ship skip
+            # the same card forever. This pass never changes Workshop manifest
+            # IDs; the exact pass below owns the freshly confirmed ID.
+            $reconcileArgs = @{
+                ReconcileAllStreams = $true
+                Repository = 'Ensrick/vermintide-2-tweaker'
+                MaxIssues = 300
+            }
+            & $refreshScript @reconcileArgs
+            $reconcileExit = $LASTEXITCODE
+            if ($reconcileExit -ne 0) {
+                Write-Host "  WARNING: all-stream card reconciliation exited $reconcileExit -- continuing with the exact shipped-stream pass." -ForegroundColor Yellow
+            }
+
+            # Only the complete successful Uploaded transaction supplies a new
+            # ManifestID. NOCHANGE supplies none; preserve the existing field
+            # under current policy, without claiming fresh manifest authority.
+            # Durable authenticated tuple/card consumption remains #1307 work.
+            $shipManifestId = $null
+            if ($uploadStatus -eq 'UPLOADED') {
+                $shipManifestId = $receiptAcceptance.ManifestId
+            }
+            # Hashtable splat, NOT an array of '-Name'/value strings: array
+            # splatting a script path binds every element POSITIONALLY (the
+            # dash tokens are not parsed as parameter names), which shoved
+            # $loadTag into -MaxIssues on the first live run (#1102).
+            $refreshArgs = @{
+                PublishedId = "$publishedId"
+                NewVersion  = "$modVersion"
+                LoadTag     = "$loadTag"
+                ModDirectory = "$Mod"
+                StreamIdentity = "$streamIdentity"
+                Repository  = 'Ensrick/vermintide-2-tweaker'
+                MaxIssues   = 300
+            }
+            if ($shipManifestId) { $refreshArgs.NewManifest = "$shipManifestId" }
+            & $refreshScript @refreshArgs
+            $exactRefreshExit = $LASTEXITCODE
+            if ($reconcileExit -eq 0 -and $exactRefreshExit -eq 0) {
+                $cardSummary = 'OK'
+            }
+            else {
+                Write-Host "  WARNING: refresh-cards.ps1 was partial (all-stream=$reconcileExit, exact=$exactRefreshExit) -- inspect the per-card lines above." -ForegroundColor Yellow
+                $cardSummary = "PARTIAL (all-stream=$reconcileExit, exact=$exactRefreshExit) -- see per-card lines"
+            }
+        }
+    }
+}
+catch {
+    Write-Host "  WARNING: card-refresh step errored ($($_.Exception.Message)) -- refresh the pinned cards by hand." -ForegroundColor Yellow
+    $cardSummary = 'ERRORED -- refresh by hand'
+}
+
+# ---------------------------------------------------------------------------
+# Step 7: success summary
+# ---------------------------------------------------------------------------
+$uploadHuman = if ($uploadStatus -eq 'UPLOADED') { 'Uploaded new content' } else { 'No content change (server up to date)' }
+Write-Host ""
+Write-Host "==================== SHIP SUCCESS ====================" -ForegroundColor Green
+Write-Host ("  Mod          : {0}" -f $Mod)
+Write-Host ("  Version      : v{0}" -f $modVersion)
+Write-Host ("  Published ID : {0}" -f $publishedId)
+$deployHuman = if ($deploymentPolicy.Mode -eq 'publication-only') {
+    "SKIPPED ($($deploymentPolicy.Reason); exact receipt-gated publication)"
+} else {
+    "OK ($checked file(s) verified; $normalizedDescriptors normalized descriptor(s))"
+}
+Write-Host ("  Deploy hash  : {0}" -f $deployHuman)
+Write-Host ("  Upload       : {0}" -f $uploadHuman)
+Write-Host ("  GitHub       : {0}" -f $githubStatus)
+$labelsHuman = if ($labelSummary.Count -gt 0) { $labelSummary -join '; ' } else { 'none' }
+Write-Host ("  Pins         : {0}" -f $pinSummary)
+Write-Host ("  Labels       : {0}" -f $labelsHuman)
+Write-Host ("  Cards        : {0}" -f $cardSummary)
+Write-Host "======================================================" -ForegroundColor Green
+
+# ---------------------------------------------------------------------------
+# Step 8: test refresh + loaded-version reminder
+# ---------------------------------------------------------------------------
+$bar = ('=' * 72)
+Write-Host ""
+Write-Host $bar -ForegroundColor Yellow
+Write-Host "  TEST BUILD READY" -ForegroundColor Yellow
+Write-Host $bar -ForegroundColor Yellow
+if ($deploymentPolicy.Mode -eq 'publication-only') {
+    Write-Host "  Author/PC-A: no local deploy was claimed ($($deploymentPolicy.Reason))." -ForegroundColor Yellow
+    Write-Host "  Subscribe/refresh the Workshop item before testing." -ForegroundColor Yellow
+    Write-Host "  Volunteer testers: unsubscribe/resubscribe through the dev collection." -ForegroundColor Yellow
+}
+else {
+    Write-Host "  Author/PC-A: test the hash-verified local deploy; no Steam restart" -ForegroundColor Yellow
+    Write-Host "  is required. Volunteer testers: unsubscribe/resubscribe through" -ForegroundColor Yellow
+    Write-Host "  the dev collection to refresh the Workshop build." -ForegroundColor Yellow
+}
+Write-Host "" -ForegroundColor Yellow
+Write-Host "    Confirm the running build via the NEWEST log under" -ForegroundColor Yellow
+Write-Host "       %APPDATA%\Fatshark\Vermintide 2\console_logs\" -ForegroundColor Yellow
+Write-Host ("    look for:  [{0}:LOAD] v{1}" -f $loadTag, $modVersion) -ForegroundColor Yellow
+Write-Host $bar -ForegroundColor Yellow
+
+# ---------------------------------------------------------------------------
+# Release the ship/version claim: the upload + deploy verified, so v$modVersion
+# is spent and the mod is free for the next session to claim (tools/ship/CLAIMS.md).
+# ---------------------------------------------------------------------------
+if (-not $NoClaim) {
+    $claimScript = Join-Path $PSScriptRoot 'claim.ps1'
+    if (Test-Path -LiteralPath $claimScript) {
+        & $claimScript -Mod $Mod -Release -Quiet
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host ""
+            Write-Host ("  Ship claim for {0} released." -f $Mod) -ForegroundColor DarkGray
+        }
+        else {
+            Write-Host ""
+            Write-Host ("  NOTE: could not auto-release the ship claim for {0}. A foreign owner is never removed; inspect it with .\tools\ship\claim.ps1 -Mod {0}." -f $Mod) -ForegroundColor Yellow
+        }
+    }
+}
+
+exit 0
+}
+finally {
+    # An SDK/upload/verification failure must not strand GitHub source pins.
+    # Keep the original failure/claim and never enter readiness/label paths.
+    # The helper drains authenticated descendants while we still own the
+    # machine transaction; Exit below retains its defensive second drain.
+    try {
+        if ($publishedPinContext -and -not $pinFinalizationAttempted) {
+            $pinFinalizationAttempted = $true
+            try {
+                $pinResult = Invoke-VtPublishedPinFinalization -PublicationJson $publishedPinContext -TransactionLease $transactionLease
+                Write-VtPinFinalizationWarning ("Workshop publication remains incomplete; GitHub source-pin finalization: {0}." -f $pinResult.Summary)
+            }
+            catch {
+                Write-VtPinFinalizationWarning ("Publication failure retained; source-pin finalization also failed: {0}. Pending provenance: {1}" -f $_.Exception.Message, $publishedPinContext)
+            }
+        }
+    }
+    finally {
+    try {
+        try {
+            if ($privateLauncherSettings -and (Test-Path -LiteralPath $privateLauncherSettings)) {
+                Remove-Item -LiteralPath $privateLauncherSettings -Force -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $privateLauncherSettings) {
+                    Write-Warning "Could not remove ship-private launcher settings: $privateLauncherSettings"
+                }
+            }
+        }
+        finally {
+            if ($null -ne $launcherExecutableLease) {
+                Exit-VmbLauncherExecutableLease -Lease $launcherExecutableLease
+            }
+        }
+    }
+    finally {
+        if ($null -ne $transactionLease) {
+            Exit-VmbMachineTransactionLease -Lease $transactionLease
+        }
+    }
+    }
+}

@@ -36,3 +36,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/tests/Test-WarlockRagd
 Before a Workshop upload, also complete the clean build, verified material
 splice, and full `tools/Test-WarlockPipeline.ps1` gate documented in
 [Release channels](docs/RELEASE_CHANNELS.md).
+
+Use the canonical standalone VMB ship process there. Commit the BuildOnly
+receipt with source, pass hosted `qa-gate`, merge, and publish from clean live
+`main` HEAD. The compatibility wrapper delegates to `tools/ship/ship.ps1`;
+direct launcher upload and browser publication are not release alternatives.

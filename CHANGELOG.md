@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.57-alpha — 2026-09-30
+
+- Uses the maintainer-supplied Warlock Engineer / Doom Rocket Workshop thumbnail,
+  copied unchanged from Thumbnail_02.png (768×768 PNG).
+- Publishes through the working standalone VMB 0.6.4 adaptation of the Tweaker
+  claim, BuildOnly receipt, hosted QA, and verified Workshop transaction.
+- Preserves the accepted public-alpha gameplay, models, animation and audio;
+  no experimental TEST behavior is promoted.
+
 ## v0.1.56-alpha — 2026-09-10
 
 - Promotes Crunch's requested 60x70 Warlock Engineer kill-feed portrait, with a
