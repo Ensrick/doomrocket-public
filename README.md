@@ -10,9 +10,10 @@ Public release source for Warlock Engineer, the mod that adds the Warprocket Bom
 - [Clearly marked TEST Workshop build](https://steamcommunity.com/sharedfiles/filedetails/?id=3794172730)
 - [Current project status](PROJECT_STATUS.md)
 
-The public alpha retains the accepted body/weapon artwork and portrait. The current live release is v0.1.58-alpha; v0.1.59-alpha is being prepared.
+The public alpha retains the accepted body/weapon artwork and portrait.
+[v0.1.59-alpha](docs/releases/v0.1.59-alpha.md) is published and verified.
 
-The v0.1.59-alpha candidate deliberately promotes accepted crash, reload,
+v0.1.59-alpha deliberately promotes accepted crash, reload,
 shove/retreat, smoke, hose-physics and functional audio fixes. It retains public
 health/armor, projectile trajectory and aiming timing. Further balance, aim,
 audio and hand/weapon-sway work stays in development. See the
