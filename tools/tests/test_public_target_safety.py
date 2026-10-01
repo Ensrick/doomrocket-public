@@ -34,6 +34,7 @@ Vector3.up = function() return vector(0,0,1) end
 Vector3.forward = function() return vector(0,1,0) end
 Vector3.right = function() return vector(1,0,0) end
 Vector3.flat = function(v) return vector(v.x,v.y,0) end
+Vector3.distance = function(a,b) return Vector3.length(a-b) end
 Vector3.length = function(v) return math.sqrt(v.x*v.x+v.y*v.y+v.z*v.z) end
 Vector3.normalize = function(v) return v*(1/Vector3.length(v)) end
 Vector3.flat_angle = function() return 0 end
@@ -125,9 +126,10 @@ ProjectileRocket = {new=function(self,...)
     events.projectile_args={...}
     return {}
 end}
-mod = {projectiles={}, network_send=function(self,...)
+mod = {projectiles={}, _choose_warlock_combat_voice=function() return 1 end, network_send=function(self,...)
     table.insert(events.rpcs,{...})
 end}
+ScriptUnit.has_extension = ScriptUnit.extension
 function get_mod() return mod end
 blackboard = {
     perceived_target=target, perceived_node='head',
@@ -316,7 +318,7 @@ class PublicTargetSafetyTests(unittest.TestCase):
             assert(events.ends == 1)
         """)
 
-    def test_public_reload_timing_and_early_mesh_reveal_remain_unchanged(self):
+    def test_completed_reload_reveals_mesh_and_preserves_loaded_ammunition(self):
         self.lua.execute("""
             blackboard.first_shots_fired=true
             blackboard.reloaded_rocket=false
@@ -327,9 +329,10 @@ class PublicTargetSafetyTests(unittest.TestCase):
             assert(reload:run(unit,blackboard,3,3) == 'running')
             assert(not blackboard.reloaded_rocket and #events.rpcs == 0)
             assert(reload:run(unit,blackboard,3.1,0.1) == 'running')
+            assert(not blackboard.reloaded_rocket and #events.rpcs == 0)
+            assert(reload:run(unit,blackboard,4.1,1) == 'done')
             assert(blackboard.reloaded_rocket and weapon.rocket_visible)
             assert(events.rpcs[1][1] == 'rpc_reload_rocket')
-            assert(reload:run(unit,blackboard,4.1,1) == 'done')
             assert(#events.rpcs == 1)
         """)
 
@@ -337,7 +340,7 @@ class PublicTargetSafetyTests(unittest.TestCase):
         self.lua.execute("""
             reload:enter(unit,blackboard,0)
             assert(reload:run(unit,blackboard,0,0) == 'done')
-            assert(events.animations[1] == 'wind_up_start')
+            assert(events.animations[1] == nil, 'loaded spawn does not replay reload')
             assert(#events.rpcs == 0)
         """)
 
@@ -359,8 +362,8 @@ class PublicTargetSafetyTests(unittest.TestCase):
                     assert(math.abs(v.z-(3.25/expected_time+0.5*9.82*expected_time)) < 0.000001)
                     assert(events.spawn.name == 'units/rocket/SM_Rocket')
                     assert(events.spawn.template == 'explosive_pickup_projectile_unit')
-                    assert(#events.projectile_args == 3)
-                    assert(#events.rpcs == 1 and #events.rpcs[1] == 6)
+                    assert(#events.projectile_args == 5 and events.projectile_args[5] == 1)
+                    assert(#events.rpcs == 1 and #events.rpcs[1] == 7 and events.rpcs[1][7] == 1)
                     assert(events.rpcs[1][1] == 'rpc_launch_rocket')
                     assert(events.rpcs[1][2] == 'others' and events.rpcs[1][3] == 42)
                     assert(events.rpcs[1][4] == v and events.rpcs[1][6] == 17)

@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.1.59-alpha - promote accepted TEST fixes
+
+- Prevent repeated projectile explosions and use the authoritative area-damage
+  system with the correct Wwise world ownership. Pair career-switch attack
+  notifications even after the original player unit is destroyed (#7–#9).
+- Preserve completed reloads across shoves, suppress point-blank launches,
+  shorten the shove cooldown to two seconds, and run away for 8–12 seconds
+  with bounded navigation and smoother turns (#11–#14).
+- Promote the accepted custom sound bank and stop combat voice before death
+  playback (#10), linked chimney smoke (#4), and the v0.1.77-dev visible hose
+  with its real two-ended secondary physics (#3). Keep the accepted spring
+  setting; the unconfirmed firmer v0.1.79-dev setting stays in TEST.
+- Keep visible walk/run events, measured gait cadence and precise animation
+  position fitting, with one VMF animation hook per entry point so hose and
+  corpse callbacks both run. Retain the existing body/weapon FBX artwork.
+- Keep public Ratling health/armor, projectile arc and aiming timing. No TEST
+  ballistic aim, spine aim constraint, grip probe, balance proposal, crystal
+  flame or portrait-frame work is included. Hand/weapon sway remains open #28.
+- Preserve the supplied Workshop thumbnail and the canonical VMB 0.6.4/Tweaker
+  publication method. Correct the remaining old v0.5.6 instructions and remove
+  standing extra-player/video acceptance requirements.
+
+Promotion provenance, tester observations and limits: [release record](docs/releases/v0.1.59-alpha.md).
+
 ## v0.1.58-alpha — 2026-09-30
 
 - Publishes the supplied Warlock Engineer / Doom Rocket thumbnail using the

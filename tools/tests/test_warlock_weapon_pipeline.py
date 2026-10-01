@@ -1925,10 +1925,13 @@ class CrunchWeaponTextureTests(unittest.TestCase):
             if all(path.is_file() for path in paths.values()):
                 self.assertEqual(rgba(output["df"]).tobytes(), rgba(paths["df"]).tobytes())
                 self.assertEqual(rgba(output["nm"]).tobytes(), rgba(paths["nm"]).tobytes())
-            self.assertFalse(
-                (ROCKET_TEXTURE_DIR / f"wb_{target}_ma.png").exists(),
-                "packed prop map is not consumed by the standard material",
-            )
+            # The hose now shares the weapon set and consumes its packed MA
+            # through a separate native skinned child. The rigid materials
+            # must continue using their accepted split scalar maps.
+            if target == "rocket":
+                self.assertFalse((ROCKET_TEXTURE_DIR / "wb_rocket_ma.png").exists())
+            material = "rocket_neutral" if target == "weapon" else "rocket_red"
+            self.assertNotIn(f"wb_{target}_ma", (REPO_ROOT / f"materials/rocket/{material}.material").read_text())
 
     def test_texture_descriptors_preserve_color_space_and_alpha_channels(self) -> None:
         expected_srgb = {

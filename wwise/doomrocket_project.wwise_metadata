@@ -1,0 +1,125 @@
+aux_buses = [
+]
+banks = {
+	Init = {
+		events = [
+		]
+	}
+	doomrocket = {
+		events = [
+			"Play_enemy_doomrocket_backpack_loop"
+			"Stop_enemy_doomrocket_backpack_loop"
+			"Play_enemy_doomrocket_launch"
+			"Play_enemy_doomrocket_impact"
+			"Play_enemy_doomrocket_voice_01"
+			"Play_enemy_doomrocket_voice_02"
+			"Play_enemy_doomrocket_voice_03"
+			"Play_enemy_doomrocket_voice_04"
+			"Play_enemy_doomrocket_voice_05"
+			"Play_enemy_doomrocket_voice_laugh_01"
+			"Play_enemy_doomrocket_voice_death_01"
+			"Play_enemy_doomrocket_voice_death_02"
+		]
+	}
+}
+buses = [
+	"Master Audio Bus"
+	"Motion Factory Bus"
+	"MUSIC"
+	"SFX"
+	"VO"
+]
+events = {
+	Play_enemy_doomrocket_backpack_loop = {
+		attenuation_max = 45
+		duration_max = 14.769229
+		duration_min = 14.769229
+		duration_type = "Infinite"
+		positioning = "3D"
+	}
+	Stop_enemy_doomrocket_backpack_loop = {
+		attenuation_max = 45
+		duration_max = 0.250000
+		duration_min = 0.250000
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_launch = {
+		attenuation_max = 120
+		duration_max = 0.807687
+		duration_min = 0.807687
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_impact = {
+		attenuation_max = 120
+		duration_max = 4.504807
+		duration_min = 4.504807
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_voice_01 = {
+		attenuation_max = 60
+		duration_max = 3.000000
+		duration_min = 3.000000
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_voice_02 = {
+		attenuation_max = 60
+		duration_max = 3.461542
+		duration_min = 3.461542
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_voice_03 = {
+		attenuation_max = 60
+		duration_max = 2.653855
+		duration_min = 2.653855
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_voice_04 = {
+		attenuation_max = 60
+		duration_max = 2.307687
+		duration_min = 2.307687
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_voice_05 = {
+		attenuation_max = 60
+		duration_max = 2.307687
+		duration_min = 2.307687
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_voice_laugh_01 = {
+		attenuation_max = 60
+		duration_max = 3.692313
+		duration_min = 3.692313
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_voice_death_01 = {
+		attenuation_max = 60
+		duration_max = 2.586531
+		duration_min = 2.586531
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+	Play_enemy_doomrocket_voice_death_02 = {
+		attenuation_max = 60
+		duration_max = 1.384626
+		duration_min = 1.384626
+		duration_type = "OneShot"
+		positioning = "3D"
+	}
+}
+parameters = [
+]
+state_groups = {
+}
+switch_groups = {
+}
+triggers = [
+]

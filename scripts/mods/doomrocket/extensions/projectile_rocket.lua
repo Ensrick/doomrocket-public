@@ -39,9 +39,6 @@ local move_particles = World.move_particles
 local vector4_multi = Quaternion.multiply
 local quat_look = Quaternion.look
 
-local trigger_audio = WwiseWorld.trigger_event
-local stop_audio = WwiseWorld.stop_event
-
 local rotate_unit = Unit.set_local_rotation
 local unit_delta_rotation = Unit.delta_rotation
 
@@ -49,7 +46,7 @@ local linear_sphere_sweep = stingray.PhysicsWorld.linear_sphere_sweep
 
 ProjectileRocket = class(ProjectileRocket)
 
-ProjectileRocket.init = function (self, unit, attacker_unit, target_pos)
+ProjectileRocket.init = function (self, unit, attacker_unit, target_pos, launch_sound_unit, combat_voice_variant)
     Managers.package:load("resource_packages/breeds/skaven_warpfire_thrower", "global")
     self.unit_string = tostring(unit)
     self.unit = unit
@@ -66,21 +63,21 @@ ProjectileRocket.init = function (self, unit, attacker_unit, target_pos)
     self.reached_apogee = false
 
     self.world = Unit.world(unit)
+	-- Constructor execution is the per-peer projectile-spawn boundary: the host creates
+	-- one instance in _shoot and every other peer creates one from rpc_launch_rocket.
+	-- The authority includes a zero-or-variant index in that same RPC, so the first rocket
+	-- in a volley produces one matching positional bark on every peer.
+	mod._play_warlock_combat_voice(attacker_unit, combat_voice_variant)
+
+	-- Prefer the launcher's p_fx node; fall back to the projectile if the weapon vanished.
+	mod._play_doomrocket_launch_sound(
+		launch_sound_unit and Unit.alive(launch_sound_unit) and launch_sound_unit or unit)
+
     local position = Actor.position(actor)
     local rotation = Actor.rotation(actor)
     self.exhaust_id = World.create_particles(self.world, "fx/chr_warp_fire_flamethrower_01", position, rotation, Vector3(0,0,1))
 
     self.physics_world = World.physics_world(self.world)
-
-    self.wwise_world = Wwise.wwise_world(self.world)
-    -- self.exhaust_sound_id = WwiseWorld.trigger_event(self.wwise_world, "Play_enemy_warpfire_thrower_shoot",  unit)
-    -- local wwise_source, wwise_world = WwiseUtils.make_unit_auto_source(self.world, unit)
-    local wwise_source = WwiseWorld.make_auto_source(self.wwise_world, unit)
-    local playing_id = WwiseWorld.trigger_event(self.wwise_world, "Play_enemy_warpfire_thrower_shoot", true, wwise_source)
-    WwiseWorld.set_source_parameter(self.wwise_world, wwise_source, "ratling_gun_shooting_loop_parameter", 0)
-
-    self.wwise_source_id = wwise_source
-    self.exhaust_sound_id = playing_id
 
     self.time_pass = 0
 
@@ -91,11 +88,20 @@ ProjectileRocket.init = function (self, unit, attacker_unit, target_pos)
 end
 
 ProjectileRocket.update = function (self, dt)
-    if not Unit.alive(self.unit) then
-        self:rocket_explode()
+    -- `rocket_explode` is a terminal transition.  A synchronous engine callback
+    -- can re-enter this extension, and deletion is deferred until the spawner's
+    -- cleanup pass, so never touch physics or particles after it has been claimed.
+    if self.exploded then
+        return
     end
 
-    if self.actor and not self.exploded then
+    if not Unit.alive(self.unit) then
+        self:rocket_explode()
+
+        return
+    end
+
+    if self.actor then
         local vel = velocity(self.actor)
         local speed = magnitude(vel)
 
@@ -115,6 +121,8 @@ ProjectileRocket.update = function (self, dt)
         -- stop (impact), and only after it has cleared the muzzle.
         if self.time_pass > 0.35 and speed < 1.5 then
             self:rocket_explode()
+
+            return
         end
 
         self.time_pass = self.time_pass + dt
@@ -147,57 +155,77 @@ ProjectileRocket.move_particles = function(self, actor)
     move_particles(self.world, self.exhaust_id, pos, rot)
 end
 
-ProjectileRocket.update_sounds = function(self)
-    if self.time_pass > 2 then
-        local pos = pos_actor(self.actor)
-        local rot = vector4_multi(rot_actor(self.actor), radians_to_quaternion(0,0, math.pi))
-        WwiseWorld.stop_event(self.wwise_world, self.exhaust_sound_id)
-        self.exhaust_sound_id = WwiseWorld.trigger_event(self.wwise_world, "Play_enemy_warpfire_thrower_shoot",  pos, rot)
-    end
-
-end
-
 -- danger level similar to gas rat
 -- damage of 1000 is too high
 ProjectileRocket.rocket_explode = function(self)
-    if Managers.player.is_server and not self.exploded then
-        local actor = self.actor
-        local position = Actor.position(actor)
-        local rotation = Actor.rotation(actor)
-        local attacker_unit_id = self.attacker_goid
-        local explosion_template_name = "doomrocket_explosion"
-        local explosion_template_id = NetworkLookup.explosion_templates[explosion_template_name]
-        local explosion_template = ExplosionTemplates[explosion_template_name]
-        local damage_source = "skaven_doomrocket"
-        local damage_source_id = NetworkLookup.damage_sources[damage_source]
-        local is_husk = true
-        -- local power_level = 1000
-        local power_level = 700
-        local world = self.world
+    if self.exploded or not Managers.player.is_server then
+        return false
+    end
 
+    -- Claim the terminal state before calling into audio, area damage, or the unit
+    -- spawner.  Issue #8 proved that create_explosion can raise after partially
+    -- dispatching: setting this at the end left the physics object active and made
+    -- every subsequent frame explode it again.
+    self.exploded = true
 
-		Managers.state.network.network_transmit:send_rpc_clients("rpc_create_explosion", attacker_unit_id, false,
-            position, rotation, explosion_template_id, 1, damage_source_id, power_level, false, attacker_unit_id)
-        Managers.state.network.network_transmit:send_rpc_server("rpc_create_explosion", attacker_unit_id, false,
-            position, rotation, explosion_template_id, 1, damage_source_id, power_level, false, attacker_unit_id)
+    local unit = self.unit
+    local actor = self.actor
+    if not unit or not Unit.alive(unit) then
+        -- The spawner can win the race with mod.update during level teardown.  There
+        -- is no live unit left to queue, so release our registry/particle state now.
+        self:destroy()
 
-        Managers.state.unit_spawner:mark_for_deletion(self.unit)
+        return false
+    end
 
-        self.exploded = true
-	end
+    -- Snapshot the physics transform while the unit is unquestionably live.  The
+    -- actor guard handles teardown races while keeping deletion on one common path.
+    -- The deletion mark below is deferred, but no later callback touches the actor.
+    local position = actor and Actor.position(actor)
+    local rotation = actor and Actor.rotation(actor)
+	local explosion_template_name = "doomrocket_explosion"
+	local explosion_template_id = NetworkLookup.explosion_templates[explosion_template_name]
+	local damage_source = "skaven_doomrocket"
+	local damage_source_id = NetworkLookup.damage_sources[damage_source]
+	-- local power_level = 1000
+	local power_level = 700
+	local network_transmit = Managers.state.network.network_transmit
+	local attacker_unit_id = self.attacker_goid
 
-    -- Unit.set_unit_visibility(self.unit, false)
-    -- Unit.disable_physics(self.unit)
+    -- Queue deletion before any fallible impact callback.  Keep the terminal object
+    -- in mod.projectiles until GrowQueue.pop_first invokes destroy(); that registry is
+    -- also the deletion hook's lookup table for particle and actor cleanup.  update()
+    -- is harmless while we wait because the terminal guard above returns immediately.
+    Managers.state.unit_spawner:mark_for_deletion(unit)
+
+    if not actor then
+        return false
+    end
+
+	-- The explosion template is the sole playback owner for impact audio. Record the
+	-- dispatch without directly triggering a duplicate local event.
+	mod._doomrocket_sound_impact_requested(position)
+
+	-- This extension updates from VMF's mod.update callback, outside the engine's safe
+	-- area-damage phase.  Issue #8 captured a stale POSITION_LOOKUP inside a direct
+	-- AreaDamageSystem call.  Route exactly one request back through the native server
+	-- RPC handler; it executes the authoritative explosion and owns client replication.
+	network_transmit:send_rpc_server("rpc_create_explosion", attacker_unit_id, false,
+		position, rotation, explosion_template_id, 1, damage_source_id, power_level,
+		false, attacker_unit_id)
+
+    return true
 end
 
 ProjectileRocket.destroy = function(self)
+    -- Destruction is terminal even if a late death-reaction callback retained this
+    -- Lua object.  Do not clear the guard and accidentally re-arm it.
+    self.exploded = true
 
-    if self.exhaust_sound_id then
-        WwiseWorld.set_source_parameter(self.wwise_world, self.wwise_source_id, "ratling_gun_shooting_loop_parameter", 100)
-        WwiseWorld.trigger_event(self.wwise_world, "player_enemy_warpfire_thrower_shoot_end", self.unit)
-        WwiseWorld.stop_event(self.wwise_world, self.exhaust_sound_id)
-        self.exhaust_sound_id = nil
-        self.wwise_source_id = nil
+    local unit = self.unit
+
+    if unit then
+        mod.projectiles[unit] = nil
     end
 
     if self.exhaust_id then
@@ -205,12 +233,10 @@ ProjectileRocket.destroy = function(self)
         self.exhaust_id = nil
     end
 
-    if self.unit then
-        mod.projectiles[self.unit] = nil
-        Unit.destroy_actor(self.unit, 'pRocket')
+    if unit and Unit.alive(unit) then
+        Unit.destroy_actor(unit, 'pRocket')
     end
     self.unit = nil
     self.actor = nil
     self.unit_string = nil
-    self.exploded = nil
 end

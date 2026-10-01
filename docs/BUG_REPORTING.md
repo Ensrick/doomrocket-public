@@ -37,7 +37,7 @@ Choose the newest `console-YYYY-MM-DD-HH.MM.SS-<guid>.log` file from the session
 where the problem happened. Verify that it contains:
 
 ```text
-[doomrocket:LOAD] v0.1.56-alpha
+[doomrocket:LOAD] v0.1.59-alpha
 ```
 
 Attach the complete file to the form; do not paste the entire log into the
@@ -50,6 +50,6 @@ dialog. The console log and crash report must come from the same game session.
 ## Privacy
 
 This is a public repository. Issue text and attachments can be viewed by
-anyone. Review logs, screenshots, and videos before uploading them and remove
+anyone. Review attached logs or screenshots before uploading them and remove
 unrelated personal information when necessary. Do not remove game or mod log
 lines needed to diagnose the problem.

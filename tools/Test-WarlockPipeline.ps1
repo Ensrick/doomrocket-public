@@ -62,9 +62,22 @@ $weaponRegression = Join-Path $PSScriptRoot 'tests\test_warlock_weapon_pipeline.
 if ($LASTEXITCODE -ne 0) {
     [void]$failures.Add("weapon source/runtime regression suite failed (exit $LASTEXITCODE)")
 }
-
-# Run source and compiled portrait checks plus executable target-safety tests.
-foreach ($regression in @('test_doomrocket_portrait_pipeline.py', 'test_public_target_safety.py')) {
+foreach ($regression in @(
+        'test_doomrocket_portrait_pipeline.py',
+        'test_public_target_safety.py',
+        'test_doomrocket_reload_lifecycle.py',
+        'test_doomrocket_reposition_lifecycle.py',
+        'test_doomrocket_action_lookup.py',
+        'test_doomrocket_projectile_lifecycle.py',
+        'test_doomrocket_sound_contract.py',
+        'test_doomrocket_chimney_anchor.py',
+        'test_doomrocket_backpack_smoke.py',
+        'test_doomrocket_hose_assets.py',
+        'test_doomrocket_hose_dynamics.py',
+        'test_doomrocket_hose_lifecycle.py',
+        'test_doomrocket_hose_pose_adapter.py',
+        'test_doomrocket_locomotion_animation.py',
+        'test_doomrocket_animation_callbacks.py')) {
     & py -3 (Join-Path $PSScriptRoot "tests\$regression")
     if ($LASTEXITCODE -ne 0) {
         [void]$failures.Add("$regression failed (exit $LASTEXITCODE)")
@@ -109,7 +122,7 @@ Assert-True ($mainPackage -notmatch 'child_materials') `
 
 $childPackage = Join-Path $repoRoot "resource_packages\doomrocket\warlock_child.package"
 Assert-True (Test-Path $childPackage) "missing warlock_child.package"
-$childMaterials = @("wb_armor_child", "wb_backpack_child", "wb_skin_child", "wb_fur_child", "wb_whiskers_child")
+$childMaterials = @("wb_armor_child", "wb_backpack_child", "wb_skin_child", "wb_fur_child", "wb_whiskers_child", "wb_hose_child")
 if (Test-Path $childPackage) {
     $childText = Get-Content $childPackage -Raw
     foreach ($name in $childMaterials) {
@@ -207,9 +220,9 @@ Assert-True ($doomrocketLua -match 'skaven_ratlinggunner/skin_1001/third_person/
 Assert-True ($doomrocketLua -match 'resource_packages/breeds/skaven_storm_vermin') `
     "doomrocket.lua must force-load the native Stormvermin skin/fur/whisker package"
 foreach ($lifecyclePattern in @(
-        'on_game_state_changed[\s\S]*?status\s*==\s*"exit"[\s\S]*?state\s*==\s*"StateIngame"[\s\S]*?reset_warlock_runtime_state\(\)',
-        'function\s+mod\.on_disabled\(\)[\s\S]*?reset_warlock_runtime_state\(\)',
-        'function\s+mod\.on_unload\(\)[\s\S]*?reset_warlock_runtime_state\(\)')) {
+        'on_game_state_changed[\s\S]*?status\s*==\s*"exit"[\s\S]*?state\s*==\s*"StateIngame"[\s\S]*?reset_warlock_runtime_state\(\s*"state_ingame_exit"\s*,\s*false\s*\)',
+        'function\s+mod\.on_disabled\(\)[\s\S]*?reset_warlock_runtime_state\(\s*"mod_disabled"\s*,\s*true\s*\)',
+        'function\s+mod\.on_unload\(\)[\s\S]*?reset_warlock_runtime_state\(\s*"mod_unload"\s*,\s*true\s*\)')) {
     Assert-True ($doomrocketLua -match $lifecyclePattern) `
         "doomrocket.lua must reset persistent Warlock death drivers on every lifecycle exit"
 }
@@ -227,13 +240,13 @@ Assert-True ($slotNames.Count -eq 5) "expected 5 material slots in .unit, found 
 $bundleRoot = Join-Path $repoRoot "bundleV2"
 $childBundle = Join-Path $bundleRoot "f5283f9585ea8355.mod_bundle"
 if (Test-Path $childBundle) {
-    # Spliced payload sizes: 2x768 (Ratling armor family), 496/416/128
+    # Spliced payload sizes: 3x768 (Ratling armor/backpack/hose family), 496/416/128
     # (exact Stormvermin skin/fur/whiskers).
     # The SDK-compiled child materials are ~22 KB sources -> 185/321 KB payloads,
     # so tiny record sizes prove the splice actually ran on this bundle.
     $spliceTool = Join-Path $PSScriptRoot "splice_bundle_resource.py"
     $expected = @{ "wb_armor_child" = 768; "wb_backpack_child" = 768; "wb_skin_child" = 496;
-                   "wb_fur_child" = 416; "wb_whiskers_child" = 128 }
+                   "wb_fur_child" = 416; "wb_whiskers_child" = 128; "wb_hose_child" = 768 }
     foreach ($name in $expected.Keys) {
         # Dry-run output: "<bundle>: splicing (material, <hash>) <current> -> <new> bytes"
         $probe = & py -3 $spliceTool $childBundle --type material `

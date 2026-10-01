@@ -10,15 +10,13 @@ Public release source for Warlock Engineer, the mod that adds the Warprocket Bom
 - [Clearly marked TEST Workshop build](https://steamcommunity.com/sharedfiles/filedetails/?id=3794172730)
 - [Current project status](PROJECT_STATUS.md)
 
-The public alpha preserves the runtime-accepted `v0.1.55` model, weapon and
-host-ragdoll baseline. [v0.1.56-alpha](docs/releases/v0.1.56-alpha.md) is published
-and verified on the public Workshop item as of September 10, 2026. It adds
-Crunch's kill-feed portrait and narrow nil/deleted-target guards.
+The public alpha retains the accepted body/weapon artwork and portrait. The current live release is v0.1.58-alpha; v0.1.59-alpha is being prepared.
 
-Experimental survivability, shove/reload changes, repositioning, ballistic aim,
-and custom audio remain on the development line. The TEST relocation crash is
-not included in this public release. New portrait visuals and public-build
-career-switch checks still need matching in-game results.
+The v0.1.59-alpha candidate deliberately promotes accepted crash, reload,
+shove/retreat, smoke, hose-physics and functional audio fixes. It retains public
+health/armor, projectile trajectory and aiming timing. Further balance, aim,
+audio and hand/weapon-sway work stays in development. See the
+[promotion record](docs/releases/v0.1.59-alpha.md) for current publication status.
 
 Do not enable the public and TEST Workshop builds simultaneously. Every player
 in a lobby must install and enable the same version.
@@ -45,7 +43,7 @@ and select the form that matches what happened:
 
 Before filing, restart the game after the Workshop update, copy the actual
 `[doomrocket:LOAD]` banner, and make sure the TEST build is disabled. The new
-release's banner is `[doomrocket:LOAD] v0.1.56-alpha`; do not report an older
+release's banner is `[doomrocket:LOAD] v0.1.59-alpha`; do not report an older
 build as a test of these changes.
 Attach the complete console log from
 `%APPDATA%\Fatshark\Vermintide 2\console_logs\`; do not paste the entire file

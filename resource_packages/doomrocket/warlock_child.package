@@ -4,4 +4,5 @@ material = [
     "child_materials/warlock_bombardier/wb_skin_child"
     "child_materials/warlock_bombardier/wb_fur_child"
     "child_materials/warlock_bombardier/wb_whiskers_child"
+    "child_materials/warlock_bombardier/wb_hose_child"
 ]

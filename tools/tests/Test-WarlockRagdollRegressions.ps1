@@ -139,6 +139,11 @@ $contractMutations = @(
         ExpectedRules = @('WR-RAG-006')
     }
     @{
+        Name = 'normal and safe hooks compete for the same World method'
+        Text = $candidateText + "`nmod:hook(World, `"update_animations`", function(func, ...) return func(...) end)"
+        ExpectedRules = @('WR-RAG-006')
+    }
+    @{
         Name = 'callback queued for a different world'
         Text = $candidateText.Replace(
             'Unit.world(owner) == world',

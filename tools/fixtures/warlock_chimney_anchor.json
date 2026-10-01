@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "description": "Tall chimney annular top lip, excluding its four decorative spikes and interior floor. Measurements only; no native payload.",
+  "source_scene_name": "xud4soo5fg7g8qd4.blend",
+  "source_scene_sha256": "ab6ebc9ef45cea6e402bbd0415c2d40716824552c2ab514947902d1eac06c1b2",
+  "source_mesh": "SM_Skaven_WarlockBombardier_Backpack",
+  "source_mesh_vertices": 11110,
+  "source_component_vertices": 961,
+  "source_rim_indices": [3668,3669,3670,3671,3672,3673,3718,3719,3720,3721,3722,3723,3768,3769,3770,3771,3772,3773,3818,3819,3820,3821,3822,3823,4428,4429,4430,4431,4432,4433,4434,4435],
+  "shipping_fbx": "units/warlock_bombardier/warlock_bombardier_3p.fbx",
+  "shipping_fbx_sha256": "cb2eba0224d1eff044a30b1bf0269d1a10395e8db9244af5c011e5c0ba0bd0bc",
+  "shipping_mesh": "warlock_bombardier",
+  "shipping_mesh_vertices": 29123,
+  "shipping_vertex_index_offset": 12846,
+  "rim_centroid_mesh_cm": [3.5895306542500007,73.37848830228128,198.3186950680001],
+  "rim_inner_radius_m": 0.06651143764707296,
+  "rim_outer_radius_m": 0.0784704415342569,
+  "mesh_outward_normal": [0,0,1],
+  "node": "j_backpack",
+  "positive_weight": 1.0,
+  "compiled_unit": "units/warlock_bombardier/warlock_bombardier_3p",
+  "compiled_unit_sha256": "ed74ddc662e2a0d43601476f520ed4349b2517114b0875f92c2c0772451b03d7",
+  "compiled_node_index": 25,
+  "compiled_rim_position_tolerance_m": 0.0005,
+  "compiled_inverse_bind_column_matrix": [
+    [0.0025734149385243654,0.009537847712635994,-0.001551389112137258,-0.00390822347253561],
+    [-0.00959326047450304,0.002714452799409628,0.0007751737139187753,0.0004816439759451896],
+    [0.00116046704351902,0.001288804691284895,0.009848457761108875,-0.011837380938231945],
+    [0,0,0,1]
+  ],
+  "compiled_pose_column_matrix": [
+    [-78.62223052978516,55.892215728759766,-26.355491638183594,-0.3474319875240326],
+    [-48.62761688232422,-82.27767944335938,-29.42348289489746,-0.2067381590604782],
+    [-38.13013458251953,-10.317346572875977,91.86751556396484,1.0014729499816895],
+    [0,0,0,1]
+  ]
+}

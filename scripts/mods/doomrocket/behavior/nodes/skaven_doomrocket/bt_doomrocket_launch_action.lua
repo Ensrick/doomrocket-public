@@ -6,7 +6,20 @@ BTDoomrocketLaunchAction = class(BTDoomrocketLaunchAction, BTNode)
 local PI = math.pi
 local TWO_PI = PI * 2
 local BOT_THREAT_UPDATE_TIME = 1
+local MIN_LAUNCH_DISTANCE = 1.8
+local BOT_ATTACK_TYPE = "ratling_gun_fire"
+local active_bot_attack_targets = setmetatable({}, { __mode = "k" })
 CLIENT_CONTROLLED_RATLING_GUN = true
+
+local function target_is_inside_launch_safety(unit, target_unit, blackboard)
+	local unit_position = POSITION_LOOKUP[unit]
+	local target_position = POSITION_LOOKUP[target_unit]
+	local distance = unit_position and target_position and Vector3.distance(unit_position, target_position)
+		or blackboard.target_dist
+
+	return type(distance) == "number" and distance < MIN_LAUNCH_DISTANCE, distance
+end
+
 
 -- Rocket flight tuning. The rocket is a physics projectile
 -- (explosive_pickup_projectile_unit), so once launched it is purely ballistic under
@@ -41,15 +54,28 @@ BTDoomrocketLaunchAction.enter = function (self, unit, blackboard, t)
 	data.target_unit = target_unit
 	data.target_node_name = node_name or data.target_node_name
 	data.invalid_target = nil
+	data.close_abort_logged = nil
 	data.attack_notified = nil
+	data.attack_notified_target = nil
 	blackboard.attack_pattern_data = data
 
-	-- Career changes can leave a deleted target in the saved attack data for one
-	-- AI tick. Reject it before any position/node access, including on entry.
+	-- A career switch destroys and recreates the player unit. Perception can return
+	-- nil for one AI tick while attack_pattern_data still holds the deleted unit.
+	-- Reject that frame before making *any* Unit call with the stale handle.
 	if not target_unit or not Unit.alive(target_unit) then
 		data.target_unit = nil
 		data.invalid_target = true
 		printf("[doomrocket:COMBAT] phase=launch_rejected reason=no_live_target")
+
+		return
+	end
+
+	local target_too_close, target_distance = target_is_inside_launch_safety(unit, target_unit, blackboard)
+
+	if target_too_close then
+		data.invalid_target = true
+		printf("[doomrocket:COMBAT] phase=launch_rejected reason=target_too_close distance=%.3f minimum=%.3f",
+			target_distance, MIN_LAUNCH_DISTANCE)
 
 		return
 	end
@@ -72,8 +98,6 @@ BTDoomrocketLaunchAction.enter = function (self, unit, blackboard, t)
 		data.arc_of_sight_nav_obstacle = aos_nav_obs
 	end
 
-	blackboard.first_shots_fired = true
-
 	blackboard.navigation_extension:set_enabled(false)
 	blackboard.locomotion_extension:set_wanted_velocity(Vector3.zero())
 
@@ -81,8 +105,8 @@ BTDoomrocketLaunchAction.enter = function (self, unit, blackboard, t)
 
 	self:_start_align_towards_target(unit, blackboard, data, target_unit, t)
 	blackboard.locomotion_extension:use_lerp_rotation(false)
-	self:_notify_attacking(unit, target_unit)
-	data.attack_notified = true
+	data.attack_notified = self:_notify_attacking(unit, target_unit)
+	data.attack_notified_target = data.attack_notified and target_unit or nil
 end
 
 BTDoomrocketLaunchAction._create_nav_obstacles = function (self, unit, target_unit, nav_world, action)
@@ -111,12 +135,15 @@ BTDoomrocketLaunchAction.leave = function (self, unit, blackboard, t, reason, de
 	drawer:reset()
 
 	local data = blackboard.attack_pattern_data
+
+
 	data.shoot_direction_box = nil
 	data.aim_position_box = nil
 	data.current_aim_rotation = nil
 	data.shoot_duration = nil
 	data.shoot_start = nil
 	data.shots_fired = nil
+	data.align_start = nil
 	data.time_between_shots_at_start = nil
 	data.time_between_shots_at_end = nil
 	data.max_fire_rate_at_percentage_modifier = nil
@@ -139,9 +166,9 @@ BTDoomrocketLaunchAction.leave = function (self, unit, blackboard, t, reason, de
 	end
 
 	if data.attack_notified then
-		-- Keep the public build's matching end even if the victim was destroyed.
-		self:_notify_no_longer_attacking(unit, data.target_unit)
+		self:_notify_no_longer_attacking(unit, data.attack_notified_target)
 		data.attack_notified = nil
+		data.attack_notified_target = nil
 	end
 
 	if not destroy then
@@ -162,7 +189,19 @@ BTDoomrocketLaunchAction.run = function (self, unit, blackboard, t, dt)
 
 	local target_unit = data.target_unit
 
-	if not target_unit or not unit_alive(target_unit) then
+	if not unit_alive(target_unit) then
+		return "done"
+	end
+
+	local target_too_close, target_distance = target_is_inside_launch_safety(unit, target_unit, blackboard)
+
+	if target_too_close then
+		if not data.close_abort_logged then
+			data.close_abort_logged = true
+			printf("[doomrocket:COMBAT] phase=launch_aborted reason=target_too_close distance=%.3f minimum=%.3f",
+				target_distance, MIN_LAUNCH_DISTANCE)
+		end
+
 		return "done"
 	end
 
@@ -176,6 +215,10 @@ BTDoomrocketLaunchAction.run = function (self, unit, blackboard, t, dt)
 		local done = self:_update_align_towards_target(unit, blackboard, t, dt)
 
 		if done and not script_data.disable_ratling_gun_fire then
+			-- A delayed callback from the previous animation must not release
+			-- this attempt before its new attack_shoot_start has produced one.
+			blackboard.anim_cb_attack_shoot_random_shot = nil
+			printf("[doomrocket:COMBAT] phase=aim_ready duration_s=%.3f", t - data.align_start)
 			self:_end_align_towards_target(unit, data)
 		end
 
@@ -225,21 +268,66 @@ BTDoomrocketLaunchAction.run = function (self, unit, blackboard, t, dt)
 end
 
 BTDoomrocketLaunchAction._notify_attacking = function (self, self_unit, target_unit)
-	Managers.state.entity:system("ai_bot_group_system"):ranged_attack_started(self_unit, target_unit, "ratling_gun_fire")
+	if not target_unit or not Unit.alive(target_unit) then
+		return false
+	end
 
-	if Unit.alive(target_unit) then
-		local status_extension = ScriptUnit.extension(target_unit, "status_system")
+	local previous_target = active_bot_attack_targets[self_unit]
+
+	if previous_target == target_unit then
+		return true
+	elseif previous_target then
+		self:_notify_no_longer_attacking(self_unit, previous_target)
+	end
+
+	local bot_group_system = Managers.state.entity:system("ai_bot_group_system")
+
+	-- A hot reload can retain the engine-side sentinel from an older build even
+	-- though this module's weak table is new. Repair that orphan before calling
+	-- ranged_attack_started, whose vanilla contract asserts one victim per attacker.
+	if bot_group_system._urgent_targets and bot_group_system._urgent_targets[self_unit] == math.huge then
+		bot_group_system:ranged_attack_ended(self_unit, target_unit, BOT_ATTACK_TYPE)
+		printf("[doomrocket:COMBAT] phase=bot_attack_notification status=repaired_stale attacker=%s target=%s",
+			tostring(self_unit), tostring(target_unit))
+	end
+
+	bot_group_system:ranged_attack_started(self_unit, target_unit, BOT_ATTACK_TYPE)
+	active_bot_attack_targets[self_unit] = target_unit
+
+	local status_extension = ScriptUnit.has_extension(target_unit, "status_system")
+	if status_extension then
 		status_extension.under_ratling_gunner_attack = true
 	end
+
+	printf("[doomrocket:COMBAT] phase=bot_attack_notification status=started attacker=%s target=%s",
+		tostring(self_unit), tostring(target_unit))
+
+	return true
 end
 
 BTDoomrocketLaunchAction._notify_no_longer_attacking = function (self, self_unit, target_unit)
-	Managers.state.entity:system("ai_bot_group_system"):ranged_attack_ended(self_unit, target_unit, "ratling_gun_fire")
+	local notified_target = active_bot_attack_targets[self_unit] or target_unit
 
-	if Unit.alive(target_unit) then
-		local status_extension = ScriptUnit.extension(target_unit, "status_system")
+	if not notified_target then
+		return false
+	end
+
+	-- Clear first so repeated leave/target-switch paths are idempotent. The group
+	-- system must receive the matching end even when a career switch has already
+	-- destroyed the victim unit; its urgent-target sentinel belongs to the attacker.
+	active_bot_attack_targets[self_unit] = nil
+	Managers.state.entity:system("ai_bot_group_system"):ranged_attack_ended(self_unit, notified_target, BOT_ATTACK_TYPE)
+
+	local target_alive = Unit.alive(notified_target)
+	local status_extension = target_alive and ScriptUnit.has_extension(notified_target, "status_system")
+	if status_extension then
 		status_extension.under_ratling_gunner_attack = false
 	end
+
+	printf("[doomrocket:COMBAT] phase=bot_attack_notification status=ended attacker=%s target=%s target_alive=%s",
+		tostring(self_unit), tostring(notified_target), tostring(target_alive))
+
+	return true
 end
 
 BTDoomrocketLaunchAction.stop_shooting = function (self, unit, data)
@@ -381,8 +469,12 @@ BTDoomrocketLaunchAction._update_target = function (self, unit, blackboard, acti
 				data.target_obscured = false
 				switched_target = true
 
-				self:_notify_no_longer_attacking(unit, old_target)
-				self:_notify_attacking(unit, target)
+				if data.attack_notified then
+					self:_notify_no_longer_attacking(unit, data.attack_notified_target or old_target)
+				end
+
+				data.attack_notified = self:_notify_attacking(unit, target)
+				data.attack_notified_target = data.attack_notified and target or nil
 
 				data.target_check = t + 0.1 + Math.random() * 0.05
 			elseif old_target_visible then
@@ -684,13 +776,16 @@ BTDoomrocketLaunchAction._shoot = function (self, unit, blackboard, data)
 		},
 	}
 	local projectile_unit, go_id = Managers.state.unit_spawner:spawn_network_unit(unit_name, unit_template_name, extension_init_data, from_position, rotation)
-	mod.projectiles[projectile_unit] = ProjectileRocket:new(projectile_unit, unit, target_vector)
+	local combat_voice_variant = mod._choose_warlock_combat_voice(unit)
+	mod.projectiles[projectile_unit] = ProjectileRocket:new(
+		projectile_unit, unit, target_vector, data.ratling_gun_unit, combat_voice_variant)
 	-- local actor = Unit.actor(projectile_unit, 0)
 	-- Actor.add_velocity(actor, impulse_vector)
 
 	Unit.set_mesh_visibility(data.ratling_gun_unit, "pRocket", false, "default")
+	blackboard.first_shots_fired = true
 	blackboard.reloaded_rocket = false
-	mod:network_send("rpc_launch_rocket","others", go_id, network_velocity, network_target_vector, attacker_unit_id)
+	mod:network_send("rpc_launch_rocket","others", go_id, network_velocity, network_target_vector, attacker_unit_id, combat_voice_variant)
 
 end
 

@@ -1,6 +1,6 @@
 local mod = get_mod("doomrocket")
 
-mod:network_register("rpc_launch_rocket", function(sender, go_id, network_velocity, network_target_vector, attacker_unit_id)
+mod:network_register("rpc_launch_rocket", function(sender, go_id, network_velocity, network_target_vector, attacker_unit_id, combat_voice_variant)
 	print(sender)
 
     local attacker_unit = Managers.state.unit_storage:unit(attacker_unit_id)
@@ -14,7 +14,8 @@ mod:network_register("rpc_launch_rocket", function(sender, go_id, network_veloci
 
 	local projectile_unit = Managers.state.unit_storage:unit(go_id)
 
-	mod.projectiles[projectile_unit] = ProjectileRocket:new(projectile_unit, attacker_unit, target_vector)
+	mod.projectiles[projectile_unit] = ProjectileRocket:new(
+		projectile_unit, attacker_unit, target_vector, ratling_gun_unit, combat_voice_variant)
 
 	Unit.set_mesh_visibility(ratling_gun_unit, "pRocket", false, "default")
 end)

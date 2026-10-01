@@ -1,0 +1,333 @@
+{
+  "authoring": {
+    "attenuation_m": {
+      "backpack": 45,
+      "impact": 120,
+      "launch": 120,
+      "voice": 60
+    },
+    "backpack_loop": "infinite (Sound property 0x3A = 0)",
+    "backpack_stop_fade_ms": 250,
+    "combat_voice_pool": [
+      "voice_01",
+      "voice_02",
+      "voice_03",
+      "voice_04",
+      "voice_05",
+      "voice_laugh_01"
+    ],
+    "death_voice_pool": [
+      "voice_death_01",
+      "voice_death_02"
+    ],
+    "flight_asset": null,
+    "impact_layers": [
+      "ground",
+      "air"
+    ],
+    "positioning": "3D emitter-relative, position and orientation"
+  },
+  "bank": {
+    "decrypted_bank_version": 132,
+    "platform": "win32",
+    "raw_bytes": 3824259,
+    "resource": "wwise/doomrocket",
+    "stored_vt2_bank_version": "0x9211BC28",
+    "wrapped_bytes": 3824303,
+    "wrapped_sha256": "d64acb9a984c6dc3f580469a7f5d952e931ce4add86233f1fb75b6677e827ff2",
+    "wrapper_bytes": 44,
+    "wwise_release": "2018.1"
+  },
+  "events": [
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_backpack_loop",
+      "short_id": 655131108
+    },
+    {
+      "layers": null,
+      "name": "Stop_enemy_doomrocket_backpack_loop",
+      "short_id": 2790808222
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_launch",
+      "short_id": 3855658196
+    },
+    {
+      "layers": [
+        "ground",
+        "air"
+      ],
+      "name": "Play_enemy_doomrocket_impact",
+      "short_id": 1341397523
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_voice_01",
+      "short_id": 2087620681
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_voice_02",
+      "short_id": 2087620682
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_voice_03",
+      "short_id": 2087620683
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_voice_04",
+      "short_id": 2087620684
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_voice_05",
+      "short_id": 2087620685
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_voice_laugh_01",
+      "short_id": 649417759
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_voice_death_01",
+      "short_id": 2287840684
+    },
+    {
+      "layers": null,
+      "name": "Play_enemy_doomrocket_voice_death_02",
+      "short_id": 2287840687
+    }
+  ],
+  "init_bank": {
+    "bytes": 1552,
+    "evidence": "byte-identical Wwise 2018.1 product in Pusfume and Loremasters' Armoury",
+    "resource": "wwise/Init",
+    "sha256": "4d9f6ff2d487c5a56e40fe2b5ebda001d281d1762d707ad2e8d239701121c3c9"
+  },
+  "media": {
+    "air": {
+      "attenuation_id": 1603010183,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_Explosion_Air.wav",
+      "duration_seconds": 1.85576,
+      "loop": false,
+      "media_id": 713559198,
+      "pcm_sha256": "c2d186008e783455abff305875bca4cb6024052827763614644f00cdcaf9328c",
+      "sound_id": 519288883,
+      "source_sha256": "ccd097981acd434fa182b3fb0b85b2b1872a2800f16cffc87fda7560f33ac2fe",
+      "wem_bytes": 163742,
+      "wem_sha256": "b5eecb7365aa4533520d74ac693d239abc428537640ea311763bd00125fc4e69"
+    },
+    "backpack": {
+      "attenuation_id": 2461371463,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_backpack_loop.wav",
+      "duration_seconds": 14.769229,
+      "loop": true,
+      "media_id": 3677124376,
+      "pcm_sha256": "b94bc6161a2d2c29a970348c972ce8fc31328172f73283dd9e29334fc22e6684",
+      "sound_id": 2701548699,
+      "source_sha256": "483d8ccb127ba01cd172c2b7e47f6f6d0eaf476e13e678032092df12771c173e",
+      "wem_bytes": 1302710,
+      "wem_sha256": "1e35154daa513ed742e4f17fecd4daf6b4982d6de87bacc611788d505657285c"
+    },
+    "ground": {
+      "attenuation_id": 1603010183,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_Explosion_Ground.wav",
+      "duration_seconds": 4.504807,
+      "loop": false,
+      "media_id": 1421715659,
+      "pcm_sha256": "80c5ad422207ffceebdee1a309522bd8f32e211e279a3d9e9b5eccbc7c9f1c02",
+      "sound_id": 3901591400,
+      "source_sha256": "662c912f3c6804838e02dca97c0f33da36cea01ffb49e7c34257c7771c9db6fb",
+      "wem_bytes": 397388,
+      "wem_sha256": "13c59edb5e86b1fcbeb32b9d6cdc3f4bd1cd9496b5092c1a3ec3bca866cc3db6"
+    },
+    "launch": {
+      "attenuation_id": 2381287409,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_shot.wav",
+      "duration_seconds": 0.807687,
+      "loop": false,
+      "media_id": 312139811,
+      "pcm_sha256": "0cd5a397751f59af989eee4c6932a016f748e2ce4e0e501c97c5298a87e0ce86",
+      "sound_id": 2259235528,
+      "source_sha256": "e6f2a145ba4c4d1ca09b83de11b829c187fc27ba4bf1b7cbe04a77a1fdfcc883",
+      "wem_bytes": 71302,
+      "wem_sha256": "00f88bf64bc730588154618a3d67accf315a8312ac64deff913a4caae1061cb2"
+    },
+    "voice_01": {
+      "attenuation_id": 2075529366,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_voice_01.wav",
+      "duration_seconds": 3.0,
+      "loop": false,
+      "media_id": 3626322630,
+      "pcm_sha256": "52c4a8fb59a728230953c12fc91fc7cd83f836993e2414a17e8bd93cf9448c9a",
+      "sound_id": 1928733989,
+      "source_sha256": "f11d5da39d082ff4d865417bdb03d701cbe455cd137846c544edc96914854ebb",
+      "wem_bytes": 264664,
+      "wem_sha256": "a5fba70567ad8ad409c31650b5f653b858c90bbbd64dbb8d5231c5053009d2b0"
+    },
+    "voice_02": {
+      "attenuation_id": 2075529366,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_voice_02.wav",
+      "duration_seconds": 3.461542,
+      "loop": false,
+      "media_id": 3626322629,
+      "pcm_sha256": "9cdf73b3207cdd164bdb6b2160d84a37c2e1a603b67fc5f2281d9cbb8e3714c2",
+      "sound_id": 1928733990,
+      "source_sha256": "0b17488038ab637c24663600f22a8dcd6e28f43423e82a2e8e8f4f368dfb80bf",
+      "wem_bytes": 305372,
+      "wem_sha256": "5048a656694a9d1b35eb681f649f1f63467d9e644a567236c7dfcad6bfb9df44"
+    },
+    "voice_03": {
+      "attenuation_id": 2075529366,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_voice_03.wav",
+      "duration_seconds": 2.653855,
+      "loop": false,
+      "media_id": 3626322628,
+      "pcm_sha256": "8f9ed5c5ba408a85ba6870aaac936b12c3dc9217ff836dcb4acb547503ee5d35",
+      "sound_id": 1928733991,
+      "source_sha256": "9e2cd95cecd3bc638392eb649fb9d228619a455ed67106b3077b0cca5d1dc294",
+      "wem_bytes": 234134,
+      "wem_sha256": "0a4bd57b0d06de1db6f3fc0fa57666af0977ab95ad361856d1681eed546ddb09"
+    },
+    "voice_04": {
+      "attenuation_id": 2075529366,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_voice_04.wav",
+      "duration_seconds": 2.307687,
+      "loop": false,
+      "media_id": 3626322627,
+      "pcm_sha256": "206a545967e5ada182d92e35c03d3264d3aae6bc24cdaf25852b9f1db14487b6",
+      "sound_id": 1928733984,
+      "source_sha256": "5a64d634353b202c269ef9e873f50202558963314559bac4436c2533de0514c7",
+      "wem_bytes": 203602,
+      "wem_sha256": "3331964524ec605e3793231745be5e8dfe80f3487c43c7555a3e7e85a5c5f7fd"
+    },
+    "voice_05": {
+      "attenuation_id": 2075529366,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_voice_05.wav",
+      "duration_seconds": 2.307687,
+      "loop": false,
+      "media_id": 3626322626,
+      "pcm_sha256": "421b9c9c1ecd0f948698f1ee4912b16dc8e227378814109d493974d3e7b13817",
+      "sound_id": 1928733985,
+      "source_sha256": "441b4e819d6095dd98451d3906be193c80beadbd772d79595b520f73a20b4279",
+      "wem_bytes": 203602,
+      "wem_sha256": "f3dfff5f1b461690006cfe53e9ee1e64dddc413dc3c49f19f67a85b4f9b63d0e"
+    },
+    "voice_death_01": {
+      "attenuation_id": 2075529366,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_voice_death_01.wav",
+      "duration_seconds": 2.586531,
+      "loop": false,
+      "media_id": 1894769579,
+      "pcm_sha256": "4fb63f85356db60aa31bd1c20e362a68ae4e33de6abdb380079c0e174affc671",
+      "sound_id": 3882266360,
+      "source_sha256": "22724110ea478ec2f7af6cf1fe1a4d21a7bb57a6c1ae9fc86cf3131c88f5ebb7",
+      "wem_bytes": 228196,
+      "wem_sha256": "cb783bfdea42f0c2b0d23f011d07cec6011b2d56b520e3444d638f1da848cb00"
+    },
+    "voice_death_02": {
+      "attenuation_id": 2075529366,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_voice_death_02.wav",
+      "duration_seconds": 1.384626,
+      "loop": false,
+      "media_id": 1894769576,
+      "pcm_sha256": "e05958868104b31ded1ee8e85ccfa9065023543d49938cc518a22b1d467b30fb",
+      "sound_id": 3882266363,
+      "source_sha256": "312ae63d60942c090e5590f006893456c81736d6338b6fa122f0b538cf527fbf",
+      "wem_bytes": 122188,
+      "wem_sha256": "5afd360817dc95aed6ec5f947d923f7025b759f0ca79d71c5fecd420d9bf2a6d"
+    },
+    "voice_laugh_01": {
+      "attenuation_id": 2075529366,
+      "canonical_source": "audio_src/doomrocket/SFX_unit_WarlockEngineer_DoomRocket_voice_laugh_01.wav",
+      "duration_seconds": 3.692313,
+      "loop": false,
+      "media_id": 2888861472,
+      "pcm_sha256": "398abce5aeba93107b7e48dddb6192dfd908bf7330e06392cd3e60ca1c596e7f",
+      "sound_id": 1430291371,
+      "source_sha256": "965de6b579d01afc1cd6c25755ed42168b371c4869bf901155d186a2b9163c53",
+      "wem_bytes": 325726,
+      "wem_sha256": "4370e70fbce2a2db07fa42f1298b3f801a8e7fa7353f0bd79974acf3d7f6767e"
+    }
+  },
+  "object_ids": {
+    "action_air": 2445155888,
+    "action_backpack_play": 708984530,
+    "action_backpack_stop": 965204200,
+    "action_ground": 2541708493,
+    "action_launch": 113055806,
+    "action_voice_01": 3196726059,
+    "action_voice_02": 3196726056,
+    "action_voice_03": 3196726057,
+    "action_voice_04": 3196726062,
+    "action_voice_05": 3196726063,
+    "action_voice_death_01": 3537859930,
+    "action_voice_death_02": 3537859929,
+    "action_voice_laugh_01": 1910625977,
+    "attenuation_air": 1603010183,
+    "attenuation_backpack": 2461371463,
+    "attenuation_ground": 1603010183,
+    "attenuation_launch": 2381287409,
+    "attenuation_voice_01": 2075529366,
+    "attenuation_voice_02": 2075529366,
+    "attenuation_voice_03": 2075529366,
+    "attenuation_voice_04": 2075529366,
+    "attenuation_voice_05": 2075529366,
+    "attenuation_voice_death_01": 2075529366,
+    "attenuation_voice_death_02": 2075529366,
+    "attenuation_voice_laugh_01": 2075529366,
+    "bank": 1348622074,
+    "event_Play_enemy_doomrocket_backpack_loop": 655131108,
+    "event_Play_enemy_doomrocket_impact": 1341397523,
+    "event_Play_enemy_doomrocket_launch": 3855658196,
+    "event_Play_enemy_doomrocket_voice_01": 2087620681,
+    "event_Play_enemy_doomrocket_voice_02": 2087620682,
+    "event_Play_enemy_doomrocket_voice_03": 2087620683,
+    "event_Play_enemy_doomrocket_voice_04": 2087620684,
+    "event_Play_enemy_doomrocket_voice_05": 2087620685,
+    "event_Play_enemy_doomrocket_voice_death_01": 2287840684,
+    "event_Play_enemy_doomrocket_voice_death_02": 2287840687,
+    "event_Play_enemy_doomrocket_voice_laugh_01": 649417759,
+    "event_Stop_enemy_doomrocket_backpack_loop": 2790808222,
+    "media_air": 713559198,
+    "media_backpack": 3677124376,
+    "media_ground": 1421715659,
+    "media_launch": 312139811,
+    "media_voice_01": 3626322630,
+    "media_voice_02": 3626322629,
+    "media_voice_03": 3626322628,
+    "media_voice_04": 3626322627,
+    "media_voice_05": 3626322626,
+    "media_voice_death_01": 1894769579,
+    "media_voice_death_02": 1894769576,
+    "media_voice_laugh_01": 2888861472,
+    "sound_air": 519288883,
+    "sound_backpack": 2701548699,
+    "sound_ground": 3901591400,
+    "sound_launch": 2259235528,
+    "sound_voice_01": 1928733989,
+    "sound_voice_02": 1928733990,
+    "sound_voice_03": 1928733991,
+    "sound_voice_04": 1928733984,
+    "sound_voice_05": 1928733985,
+    "sound_voice_death_01": 3882266360,
+    "sound_voice_death_02": 3882266363,
+    "sound_voice_laugh_01": 1430291371
+  },
+  "provenance": {
+    "builder": "tools/build_doomrocket_wwise_bank.py",
+    "method": "deterministic Wwise v132 structure assembly; no donor media or donor HIRC payloads",
+    "runtime_validation": "pending in-game VT2 sound test",
+    "validated_references": [
+      "native VT2 enemy_ratling_gunner bank",
+      "Loremasters' Armoury VT2 custom bank",
+      "wwiser Wwise v132 parser"
+    ]
+  },
+  "schema": 1
+}

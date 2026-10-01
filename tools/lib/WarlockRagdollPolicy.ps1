@@ -286,10 +286,14 @@ function Test-WarlockRagdollPolicy {
         ).Count
         $hasOwnerWorldGate =
             $hooksTokens -match '(?:Unit\.world\s*\(\s*(?:driver\.)?owner(?:_unit)?\s*\)\s*==\s*world|world\s*==\s*Unit\.world\s*\(\s*(?:driver\.)?owner(?:_unit)?\s*\))'
+        # VMF keys registrations by mod/method, not hook type. A later safe
+        # hook cannot coexist with a normal hook on the same World method.
+        $worldAnimationHooks = [regex]::Matches($hooksWithStrings,
+            'mod\s*:\s*hook(?:_safe)?\s*\(\s*World\s*,\s*["''](?<method>update_animations(?:_with_callback)?)["'']')
         $hasWorldAnimationHooks =
-            $hooksTokens -match 'mod\s*:\s*hook_safe\s*\(\s*World\s*,' -and
-            $hooksWithStrings -match '["'']update_animations["'']' -and
-            $hooksWithStrings -match '["'']update_animations_with_callback["'']'
+            $worldAnimationHooks.Count -eq 2 -and
+            @($worldAnimationHooks | Where-Object { $_.Groups['method'].Value -eq 'update_animations' }).Count -eq 1 -and
+            @($worldAnimationHooks | Where-Object { $_.Groups['method'].Value -eq 'update_animations_with_callback' }).Count -eq 1
         $hasOnceGuard =
             $hooksTokens -match 'driver\.callback_pending\s*=\s*true' -and
             $callbackBody -match 'driver\.callback_pending\s*=\s*false'
