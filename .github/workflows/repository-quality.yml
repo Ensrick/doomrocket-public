@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   source-validation:
+    name: qa-gate
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -36,6 +37,10 @@ jobs:
 
       - name: Check release-channel and repository metadata
         run: python tools/check_repository.py --channel public
+
+      - name: Verify standalone publication commit paths
+        shell: pwsh
+        run: ./tools/tests/Test-WarlockPublicationLayout.ps1
 
       - name: Run retargeting math tests
         run: python tools/tests/test_warlock_retarget_math.py

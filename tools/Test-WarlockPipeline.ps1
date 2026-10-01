@@ -18,8 +18,13 @@ Assert-True ($itemConfig -match '(?m)^published_id\s*=\s*3771657344L;\s*$') `
     "public-alpha config must target Workshop item 3771657344"
 Assert-True ($itemConfig -match '(?m)^visibility\s*=\s*"public";\s*$') `
     "public-alpha Workshop item must remain public"
-Assert-True ($itemConfig -match '(?m)^title\s*=\s*"Warlock Engineer v0\.1\.56-alpha";\s*$') `
-    "public title must be exactly Warlock Engineer v0.1.56-alpha"
+$versionText = Get-Content (Join-Path $repoRoot 'scripts/mods/doomrocket/doomrocket.lua') -Raw
+$versionMatch = [regex]::Match($versionText, 'local\s+MOD_VERSION\s*=\s*"([^"]+)"')
+Assert-True ($versionMatch.Success -and $versionMatch.Groups[1].Value.EndsWith('-alpha')) `
+    "public source must declare an alpha version"
+$expectedTitle = 'Warlock Engineer v' + $versionMatch.Groups[1].Value
+Assert-True ($itemConfig -match ('(?m)^title\s*=\s*"' + [regex]::Escape($expectedTitle) + '";\s*$')) `
+    "public title must match the source version"
 Assert-True ($itemConfig -notmatch '(?im)^title\s*=.*(?:TEST|Currently Unstable|\-dev)') `
     "public title must not contain TEST, Currently Unstable, or -dev"
 

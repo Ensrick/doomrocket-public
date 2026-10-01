@@ -3,6 +3,22 @@
 This checkout is the accepted **public-alpha** release line. These instructions
 apply to human maintainers and AI coding agents.
 
+## Build, deploy and upload authority
+
+Use the working Vermintide 2 Tweaker method required by the maintainer on
+September 13, 2026. Read `docs/RELEASE_CHANNELS.md` and the byte-for-byte
+upstream copy in `docs/upstream/vermintide-2-tweaker/PROJECT_STANDARDS.md`,
+section 6.6. These instructions supersede historical release wrappers.
+
+`tools/ship/ship.ps1` uses the working standalone Warlock adapter with explicit
+public-alpha identity. The launcher is the approved standalone VMB 0.6.4 build.
+Acquire the broker claim before choosing a version; BuildOnly records the
+spliced, validated package in `.build-receipt.json`. Commit source and receipt,
+pass hosted `qa-gate`, merge, then ship from clean live `main` HEAD.
+Do not use direct launcher upload, GUI publication, or the retired v0.5.6 path.
+The game is not installed, so use `-AllowPublic -PublicationOnly`; no deployment
+is claimed. Steam restart is exceptional recovery, not a routine ship step.
+
 ## Identity and boundaries
 
 - Canonical GitHub repository: `Ensrick/doomrocket-public`, remote `public`.
@@ -27,7 +43,8 @@ git push public public-alpha:main
 ## Start every session
 
 1. Read `PROJECT_STATUS.md` and the relevant GitHub issue.
-2. Run `git status --short` and confirm the branch is `public-alpha`.
+2. Run `git status --short --branch` and preserve unrelated local edits. Work
+   on a feature branch for preparation; final publication uses clean live HEAD.
 3. Verify `itemV2.cfg` still targets `3771657344`, is public, and has no `TEST`,
    `Currently Unstable`, or `-dev` title text.
 4. Treat GitHub Issues as the live backlog. Do not create a competing TODO list.
@@ -58,8 +75,8 @@ Full pre-upload gate:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-WarlockPipeline.ps1
 ```
 
-For a release, prefer `tools/Invoke-DoomrocketRelease.ps1`. It runs the guarded
-sequence and is non-publishing unless `-Upload` is supplied explicitly.
+`tools/Invoke-DoomrocketRelease.ps1` delegates to the canonical standalone
+adapter. Publication requires the exact source/output receipt and hosted QA.
 
 See `docs/RELEASE_CHANNELS.md`, `CONTRIBUTING.md`, and
 `docs/TESTER_CHECKLIST.md` for the human workflows.
