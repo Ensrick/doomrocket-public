@@ -137,7 +137,10 @@ class WarlockSourceTextureTests(unittest.TestCase):
                         rgba(TEXTURE_DIR / f"{name}.png").tobytes(),
                     )
             for target in ("weapon", "rocket"):
-                for suffix in ("df", "nm", "e", "r", "m", "ao"):
+                suffixes = ("df", "nm", "e", "r", "m", "ao")
+                if target == "weapon":
+                    suffixes += ("ma",)
+                for suffix in suffixes:
                     name = f"wb_{target}_{suffix}.png"
                     with self.subTest(texture=name):
                         self.assertEqual(
@@ -284,11 +287,12 @@ class WarlockMaterialSpliceTests(unittest.TestCase):
         )
 
     def test_opaque_table_ids_are_hashes_of_the_named_runtime_maps(self) -> None:
-        self.assertEqual(set(self.rows), {"wb_armor", "wb_backpack"})
+        self.assertEqual(set(self.rows), {"wb_armor", "wb_backpack", "wb_hose"})
         for name, row in self.rows.items():
             for key in ("df", "nm", "ma"):
                 with self.subTest(material=name, channel=key):
-                    path = f"textures/warlock_bombardier/{name}_{key}"
+                    path = (f"textures/rocket/wb_weapon_{key}" if name == "wb_hose"
+                            else f"textures/warlock_bombardier/{name}_{key}")
                     expected = f"{murmur64a(path.encode('utf-8')):016X}"
                     self.assertEqual(row[key].upper(), expected)
 
@@ -313,6 +317,7 @@ class WarlockMaterialSpliceTests(unittest.TestCase):
 
     def test_emissive_color_is_fitted_green_hue_not_white_eight(self) -> None:
         self.assertEqual(self.rows["wb_armor"]["emvar"], "0,0,0")
+        self.assertEqual(self.rows["wb_hose"]["emvar"], "0,0,0")
         backpack = tuple(float(value) for value in self.rows["wb_backpack"]["emvar"].split(","))
         self.assertEqual(len(backpack), 3)
         for actual, expected in zip(backpack, (0.61224258, 1.32689383, 0.24368675)):

@@ -509,27 +509,13 @@ pause, explicit post-monitor wake, or long-lived cleanup behavior.
 
 ## 9. Build and ship without invalidating the result
 
-For Doomrocket, use the known headless v0.5.6 launcher and its project-specific
-configuration:
+Follow [the copied working Tweaker method](RELEASE_CHANNELS.md). Its canonical
+headless transaction supersedes the former baseline-launcher commands and the
+old instruction to commit after upload. Preserve the reviewed-source/build
+proof, merge/QA, deployment, publication and verification order from that method.
 
-```powershell
-$vmb = 'C:\Users\danjo\source\repos\vmb-launcher-baseline-056-20260726\bin\Release\net9.0-windows\win-x64\publish\VMBLauncher.exe'
-$cfg = 'C:\Users\danjo\source\repos\_doomrocket_public_vmb\vmblauncher.settings.json'
-
-& $vmb info doomrocket --config $cfg
-& $vmb build doomrocket --clean --config $cfg
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\splice_warlock_materials.ps1 -UseVerifiedCache
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-WarlockPipeline.ps1
-& $vmb deploy doomrocket --no-remote --config $cfg
-& $vmb upload doomrocket --allow-public --config $cfg
-```
-
-After upload, require a fresh successful ManifestID in `workshop_log.txt`, then
-compare every deployed Workshop payload hash with local `bundleV2`. Verify the
-intended `itemV2.cfg` visibility—`public` for the alpha release—so the next
-upload cannot silently revert it. Only then commit and push the reviewed source
-to `public/main`.
-
-Never use `vmblauncher all`; it uploads before the required material splice.
-Keep mutation fixtures on inert `.fixture.txt` extensions because VMB scans the
-mod tree and will otherwise compile test resources into the shipping bundle.
+Warlock still requires its verified material splice and full asset/ragdoll
+pipeline after compilation, before artifact proof, deployment or upload.
+Never use `vmblauncher all`; it has no material-splice checkpoint. Keep mutation
+fixtures on inert `.fixture.txt` extensions so VMB cannot compile them into the
+shipping bundle. Preserve the channel's exact Workshop ID and visibility.

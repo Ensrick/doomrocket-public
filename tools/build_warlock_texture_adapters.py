@@ -99,7 +99,9 @@ def build(source_root: Path, output_root: Path, prop_output_root: Path) -> None:
         target_root = prop_output_root if target in PROP_SETS else output_root
         save_rgba(bc, target_root / f"wb_{target}_df.png")
         save_rgba(nr, target_root / f"wb_{target}_nm.png")
-        if target not in PROP_SETS:
+        # The separate skinned hose shares weapon UVs but uses the native
+        # packed parent. Keep the accepted rigid launcher scalar maps intact.
+        if target not in PROP_SETS or target == "weapon":
             save_rgba(mask, target_root / f"wb_{target}_ma.png")
 
         if target in PROP_SETS:
@@ -130,6 +132,8 @@ def build(source_root: Path, output_root: Path, prop_output_root: Path) -> None:
 
     for name in SETS:
         suffixes = ("df", "nm", "e", "r", "m", "ao") if name in PROP_SETS else ("df", "nm", "ma")
+        if name == "weapon":
+            suffixes += ("ma",)
         for suffix in suffixes:
             target_root = prop_output_root if name in PROP_SETS else output_root
             path = target_root / f"wb_{name}_{suffix}.png"

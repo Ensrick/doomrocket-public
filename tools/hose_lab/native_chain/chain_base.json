@@ -1,0 +1,39 @@
+{
+  "bones": "probe",
+  "events": {},
+  "variables": {},
+  "constraints": {
+    "hose": {
+      "type": "chain", "debug_name": "hose_probe", "enabled": true,
+      "debug_draw": false, "link_count": 3,
+      "gravity": "9.81", "global_damping": "0.25", "vector_field_multiplier": "0",
+      "link_0": {
+        "bone": "link_0", "constraint_type": 0, "constraint_torsion_spring": 0,
+        "constraint_rotation": "0.125", "length": "0.4", "mass": "2.5",
+        "damping": "0.05", "constraint_damping": "0.15",
+        "torsion_coef": "3", "constraint_angle": "120"
+      },
+      "link_1": {
+        "bone": "link_1", "constraint_type": 0, "constraint_torsion_spring": 0,
+        "constraint_rotation": "0.25", "length": "0.5", "mass": "3.5",
+        "damping": "0.06", "constraint_damping": "0.16",
+        "torsion_coef": "4", "constraint_angle": "110"
+      },
+      "link_2": {
+        "bone": "link_2", "constraint_type": 0, "constraint_torsion_spring": 0,
+        "constraint_rotation": "0.375", "length": "0.6", "mass": "4.5",
+        "damping": "0.07", "constraint_damping": "0.17",
+        "torsion_coef": "5", "constraint_angle": "100"
+      }
+    }
+  },
+  "layers": [{
+    "default_state": "idle",
+    "states": [{
+      "name": "idle", "state_type": "regular", "animations": [],
+      "loop_animation": true, "randomization_type": "every_loop",
+      "root_driving": "ignore", "speed": "1", "constraints": ["hose"],
+      "transitions": [], "weights": []
+    }]
+  }]
+}

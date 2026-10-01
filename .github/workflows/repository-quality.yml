@@ -57,6 +57,45 @@ jobs:
       - name: Run public target-safety Lua tests
         run: python tools/tests/test_public_target_safety.py
 
+      - name: Run doomrocket_reload_lifecycle regressions
+        run: python tools/tests/test_doomrocket_reload_lifecycle.py
+
+      - name: Run doomrocket_reposition_lifecycle regressions
+        run: python tools/tests/test_doomrocket_reposition_lifecycle.py
+
+      - name: Run doomrocket_action_lookup regressions
+        run: python tools/tests/test_doomrocket_action_lookup.py
+
+      - name: Run doomrocket_projectile_lifecycle regressions
+        run: python tools/tests/test_doomrocket_projectile_lifecycle.py
+
+      - name: Run doomrocket_sound_contract regressions
+        run: python tools/tests/test_doomrocket_sound_contract.py
+
+      - name: Run doomrocket_chimney_anchor regressions
+        run: python tools/tests/test_doomrocket_chimney_anchor.py
+
+      - name: Run doomrocket_backpack_smoke regressions
+        run: python tools/tests/test_doomrocket_backpack_smoke.py
+
+      - name: Run doomrocket_hose_assets regressions
+        run: python tools/tests/test_doomrocket_hose_assets.py
+
+      - name: Run doomrocket_hose_dynamics regressions
+        run: python tools/tests/test_doomrocket_hose_dynamics.py
+
+      - name: Run doomrocket_hose_lifecycle regressions
+        run: python tools/tests/test_doomrocket_hose_lifecycle.py
+
+      - name: Run doomrocket_hose_pose_adapter regressions
+        run: python tools/tests/test_doomrocket_hose_pose_adapter.py
+
+      - name: Run visible locomotion regressions
+        run: python tools/tests/test_doomrocket_locomotion_animation.py
+
+      - name: Run animation callback ownership regressions
+        run: python tools/tests/test_doomrocket_animation_callbacks.py
+
       - name: Run ragdoll regression tests
         shell: pwsh
         run: ./tools/tests/Test-WarlockRagdollRegressions.ps1

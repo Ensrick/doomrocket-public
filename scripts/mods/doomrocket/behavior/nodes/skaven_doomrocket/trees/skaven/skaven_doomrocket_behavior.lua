@@ -171,47 +171,68 @@ BreedBehaviors.skaven_doomrocket = {
 		name = "smartobject"
 	},
 	{
-		"BTSequence",
+		"BTSelector",
 		{
-			"BTSelector",
+			"BTDoomrocketShoveAction",
+			name = "push_attack",
+			condition = "doomrocket_should_shove",
+			action_data = ACTIONS.push_attack
+		},
+		{
+			"BTDoomrocketRepositionAction",
+			name = "reposition",
+			condition = "doomrocket_should_reposition",
+			action_data = ACTIONS.reposition
+		},
+		{
+			"BTIdleAction",
+			name = "wait_at_close_range",
+			condition = "doomrocket_should_wait_at_close_range"
+		},
+		{
+			"BTSequence",
 			{
-				"BTMoveToPlayersAction",
-				name = "move_to_players",
-				condition = "ratling_gunner_skulked_for_too_long",
-				action_data = ACTIONS.move_to_players
-			},
-			{
-				"BTSequence",
+				"BTSelector",
 				{
-					"BTRatlingGunnerApproachAction",
-					name = "lurk",
-					action_data = ACTIONS.lurk
+					"BTMoveToPlayersAction",
+					name = "move_to_players",
+					condition = "ratling_gunner_skulked_for_too_long",
+					action_data = ACTIONS.move_to_players
 				},
 				{
-					"BTRatlingGunnerApproachAction",
-					name = "engage",
-					action_data = ACTIONS.engage
+					"BTSequence",
+					{
+						"BTRatlingGunnerApproachAction",
+						name = "lurk",
+						action_data = ACTIONS.lurk
+					},
+					{
+						"BTRatlingGunnerApproachAction",
+						name = "engage",
+						action_data = ACTIONS.engage
+					},
+					name = "skulk_movement"
 				},
-				name = "skulk_movement"
+				name = "movement_method"
 			},
-			name = "movement_method"
+			{
+				"BTDoomrocketReloadAction",
+				name = "wind_up_ratling_gun",
+				action_data = ACTIONS.wind_up_ratling_gun
+			},
+			{
+				"BTDoomrocketLaunchAction",
+				name = "fire_rocket",
+				action_data = ACTIONS.fire_rocket
+			},
+			{
+				"BTRatlingGunnerMoveToShootAction",
+				name = "move_to_shoot_position",
+				action_data = ACTIONS.move_to_shoot_position
+			},
+			name = "attack_pattern"
 		},
-		{
-			"BTDoomrocketReloadAction",
-			name = "wind_up_ratling_gun",
-			action_data = ACTIONS.wind_up_ratling_gun
-		},
-		{
-            "BTDoomrocketLaunchAction",
-            name = "fire_rocket",
-            action_data = ACTIONS.fire_rocket
-        },
-		{
-			"BTRatlingGunnerMoveToShootAction",
-			name = "move_to_shoot_position",
-			action_data = ACTIONS.move_to_shoot_position
-		},
-		name = "attack_pattern"
+		name = "close_combat_selector"
 	},
 	{
 		"BTIdleAction",

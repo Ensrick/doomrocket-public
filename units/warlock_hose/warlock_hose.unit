@@ -1,0 +1,20 @@
+// Actor-free separate skin. Never append the hose to the rigid launcher.
+// Boot uses a safe SDK material. Runtime keeps the hose hidden until the
+// native skinned wb_hose_child is resident and assigned after donor loading.
+materials = {
+    DoomRocket_Weapon = "materials/rocket/rocket_neutral"
+}
+renderables = {
+    warlock_hose = {
+        always_keep = false
+        // SDK-supported policy (core/units/cubemap_probe.unit). Script-driven
+        // controls can leave the imported rest AABB; the runtime instead owns
+        // the explicit nearest-eight / 40 m cosmetic visibility budget.
+        culling = "disabled"
+        generate_uv_unwrap = false
+        occluder = false
+        shadow_caster = true
+        surface_queries = false
+        viewport_visible = true
+    }
+}

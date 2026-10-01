@@ -17,6 +17,8 @@
 # mod:load_package AFTER the exact native donor packages are resident. The five
 # materials/warlock_bombardier/wb_* boot materials stay SDK-compiled; the
 # runtime swaps each slot to the child via Unit.set_material (hooks.lua).
+# The separate cosmetic hose uses a sixth delayed child from the same verified
+# skinned Ratling parent, with the weapon's own UV-compatible packed maps.
 #
 # Donors (source-lineage verified against Crunch's Blender file):
 #   armor/backpack <- dark-pact Ratling mtr_outfit 0488..., 768 B
@@ -132,7 +134,8 @@ $whiskersPayload = Join-Path $buildDir "stormvermin\3EB079055472D4C3.material"
 
 $armorAndBackpack = @(
     @{ Name = "wb_armor";    Df = "300FD46C61FB7091"; Nm = "DD7D6050A52FBF6D"; Ma = "D6D9CA1DA53AB7F3"; EmVar = "0,0,0" },
-    @{ Name = "wb_backpack"; Df = "C4D517C71806AE3B"; Nm = "38DFFF0C6905532F"; Ma = "D5CECA5B225DE243"; EmVar = "0.61224258,1.32689383,0.24368675" }
+    @{ Name = "wb_backpack"; Df = "C4D517C71806AE3B"; Nm = "38DFFF0C6905532F"; Ma = "D5CECA5B225DE243"; EmVar = "0.61224258,1.32689383,0.24368675" },
+    @{ Name = "wb_hose";     Df = "8E582F6FE58A6C34"; Nm = "BDDC94C066CACD97"; Ma = "753CCEF6ABEEBF02"; EmVar = "0,0,0" }
 )
 foreach ($mat in $armorAndBackpack) {
     Write-Host "[splice] payload $($mat.Name)_child (Ratling 0488 packed-mask adapter)"
@@ -202,11 +205,11 @@ Assert-Sha256 (Join-Path $buildDir "wb_whiskers_child.payload") "680284D028524BB
 # --- 3. Splice each payload into exactly one built bundle ------------------
 
 if ($PayloadOnly) {
-    Write-Host "[splice] OK - 5 payloads verified; PayloadOnly left bundleV2 unchanged"
+    Write-Host "[splice] OK - 6 payloads verified; PayloadOnly left bundleV2 unchanged"
     return
 }
 
-$materials = @("wb_armor", "wb_backpack", "wb_skin", "wb_whiskers", "wb_fur")
+$materials = @("wb_armor", "wb_backpack", "wb_skin", "wb_whiskers", "wb_fur", "wb_hose")
 foreach ($mat in $materials) {
     $payload = Join-Path $buildDir "${mat}_child.payload"
     $resource = "child_materials/warlock_bombardier/${mat}_child"
@@ -235,4 +238,4 @@ foreach ($mat in $materials) {
     Write-Host "[splice] $resource -> $($splicedInto[0])"
 }
 
-Write-Host "[splice] OK - 5 warlock child materials carry game bindings"
+Write-Host "[splice] OK - 6 warlock child materials carry game bindings"

@@ -1,0 +1,14 @@
+events = [
+	"Play_enemy_doomrocket_backpack_loop"
+	"Stop_enemy_doomrocket_backpack_loop"
+	"Play_enemy_doomrocket_launch"
+	"Play_enemy_doomrocket_impact"
+	"Play_enemy_doomrocket_voice_01"
+	"Play_enemy_doomrocket_voice_02"
+	"Play_enemy_doomrocket_voice_03"
+	"Play_enemy_doomrocket_voice_04"
+	"Play_enemy_doomrocket_voice_05"
+	"Play_enemy_doomrocket_voice_laugh_01"
+	"Play_enemy_doomrocket_voice_death_01"
+	"Play_enemy_doomrocket_voice_death_02"
+]

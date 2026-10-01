@@ -1,0 +1,18 @@
+// SDK placeholder only: replaced after build by the verified native skinned
+// Ratling child with DoomRocket_Weapon maps. Never boot-load this package.
+// Deliberately texture-free: referencing the weapon maps here packages another
+// copy in the delayed child bundle. Runtime textures are owned by the main
+// package and verified resident before the spliced child is assigned.
+parent_material = "core/stingray_renderer/shader_import/standard"
+material_contexts = { surface_material = "" }
+variables = {
+    base_color = { type = "vector3" value = [ 0.2 0.2 0.2 ] }
+    roughness = { type = "scalar" value = 0.8 }
+    metallic = { type = "scalar" value = 0 }
+    use_color_map = { type = "scalar" value = 0 }
+    use_normal_map = { type = "scalar" value = 0 }
+    use_roughness_map = { type = "scalar" value = 0 }
+    use_metallic_map = { type = "scalar" value = 0 }
+    use_ao_map = { type = "scalar" value = 0 }
+    emissive_intensity = { type = "scalar" value = 0 }
+}

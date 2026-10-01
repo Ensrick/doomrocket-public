@@ -11,6 +11,18 @@ end
 BTDoomrocketReloadAction.enter = function (self, unit, blackboard, t)
 	local action = self._tree_node.action_data
 	local data = blackboard.attack_pattern_data or {}
+	data.abort_windup = nil
+	data.reload_in_progress = nil
+	blackboard.attack_pattern_data = data
+	blackboard.action = action
+	blackboard.anim_cb_attack_windup_start_finished = nil
+
+	-- Spawned launchers already contain a rocket. Keep ammunition on the unit
+	-- blackboard: shoves restart the sequence and vanilla movement replaces data.
+	if blackboard.reloaded_rocket == nil then
+		blackboard.reloaded_rocket = true
+	end
+
 	local target_unit, node_name, old_target_visible = PerceptionUtils.pick_ratling_gun_target(unit, blackboard)
 
 	if target_unit and Unit.alive(target_unit) then
@@ -30,19 +42,24 @@ BTDoomrocketReloadAction.enter = function (self, unit, blackboard, t)
 		if data.target_unit and not Unit.alive(data.target_unit) then
 			data.target_unit = nil
 		end
-
 		data.abort_windup = true
-		blackboard.attack_pattern_data = data
-		blackboard.action = action
+		return
+	end
 
+	data.constraint_target = data.constraint_target or Unit.animation_find_constraint_target(unit, "aim_target")
+	local inventory_template = blackboard.breed.default_inventory_template
+	local inventory_extension = ScriptUnit.extension(unit, "ai_inventory_system")
+	data.ratling_gun_unit = inventory_extension:get_unit(inventory_template)
+
+	-- Re-entering after a shove must reacquire the target/weapon, but it must
+	-- not replay the reload animation or consume another wind-up for a full gun.
+	if blackboard.reloaded_rocket then
 		return
 	end
 
 	data.wind_up_timer = AiUtils.random(3, 5) --this sets doom rocket windup time
 	data.wind_up_time = data.wind_up_timer
-	data.constraint_target = data.constraint_target or Unit.animation_find_constraint_target(unit, "aim_target")
-	blackboard.attack_pattern_data = data
-	blackboard.action = action
+	data.reload_in_progress = true
 
 	blackboard.navigation_extension:set_enabled(false)
 	blackboard.locomotion_extension:set_wanted_velocity(Vector3.zero())
@@ -50,15 +67,12 @@ BTDoomrocketReloadAction.enter = function (self, unit, blackboard, t)
 	blackboard.move_state = "attacking"
 
 	AiUtils.anim_event(unit, data, "wind_up_start")
+	printf("[doomrocket:COMBAT] phase=reload_begin duration_s=%.3f", data.wind_up_time)
 
 	if script_data.ai_ratling_gunner_debug then
 		AiUtils.temp_anim_event(unit, "wind_up_start")
 	end
 
-	local inventory_template = blackboard.breed.default_inventory_template
-	local inventory_extension = ScriptUnit.extension(unit, "ai_inventory_system")
-	local ratling_gun_unit = inventory_extension:get_unit(inventory_template)
-	data.ratling_gun_unit = ratling_gun_unit
 	local ai_navigation = blackboard.navigation_extension
 
 	ai_navigation:set_max_speed(blackboard.breed.walk_speed)
@@ -114,6 +128,13 @@ BTDoomrocketReloadAction.leave = function (self, unit, blackboard, t, reason, de
 
 	local data = blackboard.attack_pattern_data or {}
 
+	if data.reload_in_progress and reason ~= "done" then
+		printf("[doomrocket:COMBAT] phase=reload_interrupted reason=%s remaining_s=%.3f loaded=%s",
+			tostring(reason), data.wind_up_timer, tostring(blackboard.reloaded_rocket))
+	end
+
+	data.reload_in_progress = nil
+
 	AiUtils.clear_anim_event(data)
 end
 
@@ -126,9 +147,7 @@ BTDoomrocketReloadAction.run = function (self, unit, blackboard, t, dt)
 		return "failed"
 	end
 
-	if not blackboard.first_shots_fired then
-		self:_update_target(unit, blackboard, data, t)
-
+	if not data.reload_in_progress then
 		return "done"
 	end
 
@@ -150,15 +169,17 @@ BTDoomrocketReloadAction.run = function (self, unit, blackboard, t, dt)
 		AiUtils.temp_anim_event(unit, "wind_up_loop", data.wind_up_timer)
 	end
 
-	if data.wind_up_timer < 1  and (not blackboard.reloaded_rocket) then
+	-- Commit the visible round and ammunition together only after the reload
+	-- finishes. An interrupted last second is still an incomplete reload.
+	if data.wind_up_timer < 0 then
 		local rat_go_id = Managers.state.unit_storage:go_id(unit)
 		Unit.set_mesh_visibility(data.ratling_gun_unit, "pRocket", true, "default")
 		mod:network_send("rpc_reload_rocket","others", rat_go_id)
 		blackboard.reloaded_rocket = true
-	end
+		data.reload_in_progress = nil
+		printf("[doomrocket:COMBAT] phase=reload_complete loaded=true")
 
-    if data.wind_up_timer < 0 then
-        return "done"
+		return "done"
 	end
 
 	return "running"

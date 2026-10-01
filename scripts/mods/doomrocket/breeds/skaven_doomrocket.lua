@@ -63,6 +63,8 @@ Breeds.skaven_doomrocket.default_inventory_template = "doomrocket_inventory"
 -- identity comes from the breed's behavior tree, inventory and aim template, not from the
 -- extension list.
 Breeds.skaven_doomrocket.death_reaction = "doomrocket"
+-- Custom death playback owns the event and first stops active combat voice.
+Breeds.skaven_doomrocket.death_sound_event = nil
 
 -- The bombardier unit carries its own state machine, which lacks the hit_reaction_*
 -- events; fall back to the ratling gunner machine so the reaction can play. Vanilla
@@ -82,8 +84,39 @@ end
 
 BreedActions.skaven_doomrocket = table.clone(BreedActions.skaven_ratling_gunner)
 BreedActions.skaven_doomrocket.fire_rocket = table.clone(BreedActions.skaven_doomrocket.shoot_ratling_gun)
+BreedActions.skaven_doomrocket.fire_rocket.name = "fire_rocket"
 BreedActions.skaven_doomrocket.shoot_ratling_gun = nil
 BreedActions.skaven_doomrocket.fire_rocket.light_weight_projectile_template_name = "doomrocket"
+
+-- Reuse the Stormvermin's zero-damage shove and push force, but
+-- not its animation callback node.  The living Doomrocket uses the Ratling
+-- state machine and the visible outfit only shares attack_shoot_align; the
+-- custom action applies the shove once from a timer instead of waiting for the
+-- unavailable anim_cb_stormvermin_push event.
+BreedActions.skaven_doomrocket.push_attack = table.clone(BreedActions.skaven_storm_vermin.push_attack)
+BreedActions.skaven_doomrocket.push_attack.attack_anim = "attack_shoot_align"
+BreedActions.skaven_doomrocket.push_attack.impact_time = 0.65
+BreedActions.skaven_doomrocket.push_attack.duration = 1.2
+
+-- Sustained escape after the kick: run for 8-12 seconds and seek 20 m
+-- separation. Plan shorter safe segments so this does not require one long
+-- unobstructed ray. Blocked movement still terminates instead of looping.
+BreedActions.skaven_doomrocket.reposition = {
+	name = "reposition",
+	clear_distance = 20.0,
+	goal_distance = 8.0,
+	min_duration = 8.0,
+	max_duration = 12.0,
+	max_plans = 32,
+	max_blocked_plans = 2,
+	replan_interval = 0.75,
+	handoff_lookahead = 0.5,
+	arrival_distance = 0.3,
+	minimum_progress = 0.15,
+	nav_height = 0.5,
+	move_speed = Breeds.skaven_doomrocket.run_speed,
+	move_anim = "move_fwd_run",
+}
 
 BreedActions.skaven_doomrocket.switch_weapons = {
     switch_animation = "idle",

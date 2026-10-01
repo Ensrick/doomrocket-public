@@ -1,95 +1,21 @@
 # Project status
 
-Snapshot updated 2026-09-30. GitHub Issues is the live work queue; this page is
-the short re-entry map, not a second backlog.
-
-## One-minute re-entry
+Updated October 1, 2026. GitHub Issues is the live backlog.
 
 | Question | Answer |
 | --- | --- |
-| What can ordinary players use? | [Public alpha v0.1.58-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), published and verified with the new thumbnail |
-| Where is the release evidence? | [v0.1.58-alpha publication record](docs/releases/v0.1.58-alpha.md); the accepted gameplay baseline remains [v0.1.56-alpha](docs/releases/v0.1.56-alpha.md) |
-| What is the TEST status? | Steam still serves v0.1.79-dev on its separate item; see the [development status](https://github.com/Ensrick/doomrocket-private/blob/private-copy/PROJECT_STATUS.md). No TEST behavior is promoted by this thumbnail release. |
-| Where are public reports filed? | [Public issue chooser](https://github.com/Ensrick/doomrocket-public/issues/new/choose) |
-| Where is experimental work tracked? | [Development issues](https://github.com/Ensrick/doomrocket-private/issues) |
-| Can both Workshop items be enabled? | No. They share an internal mod identity; use exactly one. |
+| Live public alpha | [v0.1.58-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), published with the supplied thumbnail |
+| Current public candidate | v0.1.59-alpha: accepted crash, reload/shove/retreat, smoke, hose physics and functional audio fixes; [scope and evidence](docs/releases/v0.1.59-alpha.md). Publication is pending. |
+| Development TEST | v0.1.79-dev, separate item `3794172730`; unconfirmed stronger hose spring and diagnostic grip probe remain there |
+| Open alpha report | [#34](https://github.com/Ensrick/doomrocket-private/issues/34): reported crash and Into the Nest arena problem. Attached v0.1.56 log has no matching crash stack; this candidate does not claim resolution. |
+| Development follow-up | Hand/weapon sway #28, near-range aim #6, aiming duration #16, hose stiffness #3, audio polish #5, flame #15, frame #30, balance #33 |
 
-## Current state
+The v0.1.59 promotion retains public Ratling health/armor, projectile trajectory
+and aiming timing. The firmer TEST spring, ballistic aiming, visible spine aim
+constraint and grip diagnostics are excluded. Known fence/vault motion and hose
+collision limits remain documented in the release record.
 
-**v0.1.58-alpha is published and verified**, September 30 at 23:56 Chicago
-time (October 1 at 04:56 UTC). The Workshop thumbnail is the supplied
-`Thumbnail_02.png`, unchanged. Its served image hash matches the source.
-Steam recorded a new-content upload and `finish: OK`, content handle
-`6070835758371159345`, and exactly 92,292,389 bytes.
-
-Publication used the working standalone VMB 0.6.4 / Tweaker transaction:
-claim, clean BuildOnly, native-material splice, package tests, committed
-receipt, reviewed PR, exact merged-commit hosted QA, and verified upload.
-The public repository now owns that process. The retired direct-upload wrapper
-has been replaced. Receipt ignore state and the exact supported checkout policy
-are checked before compilation and in hosted QA. See the
-[publication record](docs/releases/v0.1.58-alpha.md).
-
-Gameplay, models, animation and audio retain the accepted public baseline.
-No game installation, deployment, or new in-game acceptance is claimed.
-The v0.1.57 GitHub candidate never reached Workshop; its tag is preserved.
-
-## Historical v0.1.56-alpha baseline
-
-**v0.1.56-alpha was published and verified**, September 10 at 05:05:35 UTC.
-At publication, Steam confirmed public item `3771657344` under its original
-title `Warprocket Bombardier v0.1.56-alpha`, content handle
-`1428725673095257484`, and exactly 92,596,852 bytes. The description then
-matched the source configuration. The release preserves
-the accepted body/weapon assets, launcher
-hand/back placement, loaded-warhead death drop, host ragdoll, and existing
-public combat/audio behavior.
-
-As of September 25, Steam lists the same item as `Warlock Engineer
-v0.1.56-alpha`, with the same content handle and byte size. The source title
-and load-order wording are aligned here for a future publication; this source
-edit does not publish a new package or change the in-game enemy's name.
-
-Built source `3c08e46` passed the clean build, verified material splice, full
-public package pipeline, and [source CI](https://github.com/Ensrick/doomrocket-public/actions/runs/34439363632).
-The same validated package uploaded successfully after a graceful Steam
-restart. TEST v0.1.65 and its content handle `8123257090222204359` are unchanged.
-
-The deliberate promotion contains only Crunch's requested 60x70 kill-feed
-portrait and nil/deleted-target guards in launch/reload. The target-safety
-approach has [development host evidence under #9](https://github.com/Ensrick/doomrocket-private/issues/9#issuecomment-5554028509),
-but this narrower public port still requires a matching runtime regression.
-Portrait color, size and orientation likewise remain visually unconfirmed.
-See the [promotion and release record](docs/releases/v0.1.56-alpha.md).
-
-No reposition, shove, reload-preservation, Stormvermin durability, ballistic-aim,
-custom-audio, or projectile/explosion changes are promoted. TEST v0.1.65's
-missing `reposition` network action ID crashes after a kick ([#14](https://github.com/Ensrick/doomrocket-private/issues/14));
-that action is absent from this public release. The development explosion
-matrix remains open under [#7](https://github.com/Ensrick/doomrocket-private/issues/7)
-and [#8](https://github.com/Ensrick/doomrocket-private/issues/8).
-
-Public acceptance gaps remain tracked by [remote-client ragdoll #1](https://github.com/Ensrick/doomrocket-public/issues/1)
-and [post-monitor cleanup #2](https://github.com/Ensrick/doomrocket-public/issues/2).
-
-## Where a change belongs
-
-| Change | Repository |
-| --- | --- |
-| Documentation, packaging, or a proven fix for the shipped alpha | `doomrocket-public` |
-| New mechanics, balance, aiming, sound, effects, animation, or asset experiments | `doomrocket-private` |
-| Promotion of accepted development work | Implement/test in development first, then deliberately port to public |
-
-## Resume checklist
-
-1. Choose the public or development channel before editing anything.
-2. Confirm the current worktree is clean with `git status --short`.
-3. Read the relevant GitHub issue and its newest attached log.
-4. Run `py -3 tools/check_repository.py --channel public` for a fast public
-   metadata check; use the full pipeline before any Workshop upload.
-5. Never infer acceptance from static tests alone. Record the explicit promotion
-   scope and any outstanding runtime evidence; do not expand a narrow promotion
-   into a merge of the TEST branch.
-
-See [Release channels](docs/RELEASE_CHANNELS.md) for the publication sequence
-and [Bug reporting](docs/BUG_REPORTING.md) for tester instructions.
+Use the [canonical VMB/Tweaker method](docs/RELEASE_CHANNELS.md). The game is
+not installed: publication only, with no deployment claim. Keep exactly one
+channel enabled. A solo report and matching log suffice; do not request video
+or another player as a standing test requirement.

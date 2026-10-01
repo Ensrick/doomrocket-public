@@ -374,34 +374,18 @@ again after every asset replacement.
 
 ## Build, splice, test, deploy, and upload
 
-Use the known headless v0.5.6 launcher binary and the Doomrocket-specific
-configuration. Always supply a verb; invoking the executable with no arguments
-opens the GUI.
+Follow [the copied working Tweaker method](../RELEASE_CHANNELS.md).
+The former v0.5.6 command sequence is superseded by the user's September 13
+instruction. Build and publication use the canonical headless ship transaction.
 
-```powershell
-$vmb = 'C:\Users\danjo\source\repos\vmb-launcher-baseline-056-20260726\bin\Release\net9.0-windows\win-x64\publish\VMBLauncher.exe'
-$cfg = 'C:\Users\danjo\source\repos\_doomrocket_public_vmb\vmblauncher.settings.json'
+The Warlock-specific build contract remains: the SDK emits placeholder child
+materials; `tools/splice_warlock_materials.ps1` installs the verified native
+bindings. Run `tools/Test-WarlockPipeline.ps1` on the spliced output before
+artifact proof, deployment or publication. Do not use the `all` verb, which
+has no material-splice checkpoint. Preserve the exact channel's Workshop ID.
 
-& $vmb build doomrocket --clean --config $cfg
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\splice_warlock_materials.ps1 -UseVerifiedCache
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-WarlockPipeline.ps1
-& $vmb deploy doomrocket --no-remote --config $cfg
-& $vmb upload doomrocket --allow-public --config $cfg
-```
-
-The order is mandatory. VMB's SDK build emits placeholder child-material
-payloads; `splice_warlock_materials.ps1` replaces them with the reviewed native
-children. `Test-WarlockPipeline.ps1` must inspect the already-spliced bundle
-before deployment or publication. Never use the `all` verb for Doomrocket:
-there is no splice point inside it, so it can publish an unspliced bundle.
-`--no-remote` is explicit because this release lane targets the local Workshop
-folder; an unavailable PC-B remote must not turn a valid local deployment into
-a failed command.
-
-After upload, verify a fresh `workshop_log.txt` success record/ManifestID for
-published item `3771657344`, verify the deployed Workshop folder hashes match
-`bundleV2`, and retain `public` visibility. A successful uploader exit
-without a fresh log record and matching content is not publication evidence.
+Use the source workflow's actual upload-transaction observer and deployment
+hash verification. An uploader exit code or metadata match is insufficient.
 
 ## Runtime acceptance
 

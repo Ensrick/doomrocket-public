@@ -619,6 +619,9 @@ DeathReactions.templates.doomrocket = {
             -- its delayed death event later in the frame, before start().
             mod._prepare_warlock_death(unit, "unit")
             ai_default_unit_pre_start(unit, context, t, killing_blow)
+			if not is_hot_join_sync(killing_blow) then
+				mod._play_warlock_death_voice(unit)
+			end
         end,
         start = function (unit, context, t, killing_blow, is_server)
             local warlock_pose_driver = mod._take_warlock_death_driver(unit)
@@ -641,19 +644,16 @@ DeathReactions.templates.doomrocket = {
             if killing_blow[DamageDataIndex.HIT_ZONE] == "aux" then
                 local position = Unit.local_position(unit, 0)
                 local rotation = Unit.local_rotation(unit, 0)
-                local attacker_unit_id = Managers.state.unit_storage:go_id(unit)
                 local explosion_template_name = "doomrocket_explosion"
-                local explosion_template_id = NetworkLookup.explosion_templates[explosion_template_name]
-                local explosion_template = ExplosionTemplates[explosion_template_name]
                 local damage_source = "skaven_doomrocket"
-                local damage_source_id = NetworkLookup.damage_sources[damage_source]
                 local power_level = 1000
 
                 if is_server then
-                    Managers.state.network.network_transmit:send_rpc_clients("rpc_create_explosion", attacker_unit_id, false,
-                        position, rotation, explosion_template_id, 1, damage_source_id, power_level, false, attacker_unit_id)
-                    Managers.state.network.network_transmit:send_rpc_server("rpc_create_explosion", attacker_unit_id, false,
-                        position, rotation, explosion_template_id, 1, damage_source_id, power_level, false, attacker_unit_id)
+					mod._doomrocket_sound_impact_requested(position)
+					local area_damage_system = Managers.state.entity:system("area_damage_system")
+					area_damage_system:create_explosion(unit, position, rotation,
+						explosion_template_name, 1, damage_source, power_level,
+						false, unit)
                 end
             end
 
@@ -670,6 +670,9 @@ DeathReactions.templates.doomrocket = {
         pre_start = function (unit, context, t, killing_blow)
             mod._prepare_warlock_death(unit, "husk")
             ai_default_husk_pre_start(unit, context, t, killing_blow)
+			if not is_hot_join_sync(killing_blow) then
+				mod._play_warlock_death_voice(unit)
+			end
         end,
         start = function (unit, context, t, killing_blow, is_server)
             local warlock_pose_driver = mod._take_warlock_death_driver(unit)

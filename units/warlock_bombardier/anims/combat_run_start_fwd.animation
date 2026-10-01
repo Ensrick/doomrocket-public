@@ -1,7 +1,7 @@
 bones = "units/warlock_bombardier/warlock_bombardier_3p"
 tolerance = {
     "" = [
-        0.01
+        0.00001
         0.01
         0
         false
