@@ -4,3 +4,6 @@ bundleV2/*
 # game-derived splice payloads - never commit (publication boundary)
 .build/
 __pycache__/
+
+# Standalone receipt authority: compiled payloads remain untracked.
+/bundleV2/
