@@ -1,6 +1,10 @@
 # Regression for standalone commit paths: mutable files cannot replace commit proof.
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../ship/publication-snapshot.ps1')
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$entry = Get-VtBuildReceiptInventoryEntry -RepoRoot $repoRoot -Mod doomrocket
+$ignoreProblems = @(Get-VtBundleAuthorityIgnoreStateErrors -Mod doomrocket -Authority ([string]$entry.BundleAuthority) -GitIgnoreText ([IO.File]::ReadAllText((Join-Path $repoRoot '.gitignore'))))
+if ($ignoreProblems.Count) { throw "Repository bundle authority: $($ignoreProblems -join '; ')" }
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('warlock-publication-layout-' + [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 function Invoke-FixtureGit([string[]]$Arguments) {

@@ -78,6 +78,9 @@ try {
     $null = Assert-VmbLauncherPublicationCapability -LauncherExecutableLease $launcherLease -WorkingDirectory $repoRoot -RequireReceiptAuthority
     & py -3 tools/check_repository.py --channel $profile.Channel
     Assert-Native 'Repository preflight'
+    $inventoryEntry = Get-VtBuildReceiptInventoryEntry -RepoRoot $repoRoot -Mod $Mod
+    $ignoreProblems = @(Get-VtBundleAuthorityIgnoreStateErrors -Mod $Mod -Authority ([string]$inventoryEntry.BundleAuthority) -GitIgnoreText ([IO.File]::ReadAllText((Join-Path $repoRoot '.gitignore'))))
+    if ($ignoreProblems.Count) { throw "Bundle authority preflight failed: $($ignoreProblems -join '; ')" }
     $before = Get-VtBuildWorkingSourceMap -RepoRoot $repoRoot -Mod $Mod
     $repro = Test-VtBuildWorkingSourceReproducibility -SourceMap $before
     if (-not $repro.Ok) { throw ($repro.Problems -join '; ') }
