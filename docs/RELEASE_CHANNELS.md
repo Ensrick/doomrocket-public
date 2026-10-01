@@ -24,9 +24,10 @@ files, source provenance, runtime evidence and remaining limitations in a
 release record, then port only that scope. Keep public metadata, Workshop ID,
 preview, existing assets and unmodified gameplay intact.
 
-The [v0.1.56-alpha record](releases/v0.1.56-alpha.md) selects the requested
-portrait and narrow target guards. It excludes TEST repositioning (confirmed
-crash #14), shove/reload changes, durability, aiming, audio, and explosions.
+The [v0.1.59-alpha record](releases/v0.1.59-alpha.md) promotes the accepted
+crash, reload/shove/retreat, smoke, hose physics and functional audio fixes.
+The earlier [v0.1.56-alpha record](releases/v0.1.56-alpha.md) documents its
+narrow portrait/target-guard promotion and exclusions at that time.
 
 ## Compatibility rule
 

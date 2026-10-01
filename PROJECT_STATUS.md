@@ -4,10 +4,10 @@ Updated October 1, 2026. GitHub Issues is the live backlog.
 
 | Question | Answer |
 | --- | --- |
-| Live public alpha | [v0.1.58-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), published with the supplied thumbnail |
-| Current public candidate | v0.1.59-alpha: accepted crash, reload/shove/retreat, smoke, hose physics and functional audio fixes; [scope and evidence](docs/releases/v0.1.59-alpha.md). Publication is pending. |
+| Live public alpha | [v0.1.59-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), published and verified October 1 at 06:28 UTC |
+| Current public scope | Accepted crash, reload/shove/retreat, smoke, hose physics and functional audio fixes; [source, acceptance and publication evidence](docs/releases/v0.1.59-alpha.md). 96,315,457 bytes; content handle `5109085740045324862`. |
 | Development TEST | v0.1.79-dev, separate item `3794172730`; unconfirmed stronger hose spring and diagnostic grip probe remain there |
-| Open alpha report | [#34](https://github.com/Ensrick/doomrocket-private/issues/34): reported crash and Into the Nest arena problem. Attached v0.1.56 log has no matching crash stack; this candidate does not claim resolution. |
+| Open alpha report | [#34](https://github.com/Ensrick/doomrocket-private/issues/34): reported crash and Into the Nest arena problem. Attached v0.1.56 log has no matching crash stack; this release does not claim resolution. |
 | Development follow-up | Hand/weapon sway #28, near-range aim #6, aiming duration #16, hose stiffness #3, audio polish #5, flame #15, frame #30, balance #33 |
 
 The v0.1.59 promotion retains public Ratling health/armor, projectile trajectory

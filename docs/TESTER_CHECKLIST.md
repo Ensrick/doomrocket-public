@@ -2,7 +2,7 @@
 
 For the published version, refresh the public Workshop subscription, disable
 the TEST item, restart Vermintide 2 and confirm the exact `[doomrocket:LOAD]`
-banner. v0.1.59-alpha is a candidate until its publication record is verified.
+banner. [v0.1.59-alpha is published and verified](releases/v0.1.59-alpha.md).
 
 One solo session is sufficient. Report what you observe in words and attach the
 complete matching console log. No video, second player or multiplayer test
