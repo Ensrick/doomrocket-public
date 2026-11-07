@@ -217,7 +217,22 @@ ScriptUnit={has_extension=function(u,kind)
  if kind=='ai_inventory_system' then return u.inventory end
 end}
 ScriptUnit.extension=ScriptUnit.has_extension
-mod={_warlock_outfits={[owner]=outfit}}
+mod={_warlock_outfits={[owner]=outfit},_warlock_outfit_owners={}}
+-- Shared lifecycle hooks also notify the animation owner and outfit correction.
+-- Their pose/metadata contracts have dedicated executable suites; keep the
+-- actual hose controller and production lifecycle callbacks unchanged here.
+mod._start_warlock_animation_ownership=function() end
+mod._stop_warlock_animation_ownership=function() end
+mod._reset_warlock_animation_ownership=function() end
+mod._release_warlock_animation_ownership_world=function() end
+mod._update_warlock_animation_ownership=function() end
+mod._update_warlock_animation_blend=function() end
+mod._note_warlock_animation_ownership_event=function() end
+mod._start_warlock_outfit_correction=function() end
+mod._stop_warlock_outfit_correction=function() end
+mod._reset_warlock_outfit_correction=function() end
+mod._release_warlock_outfit_correction_world=function() end
+mod._handoff_warlock_outfit_correction=function() end
 -- Shared hooks also notify the independent visible gait controller. Its native
 -- variable/lifetime contract is exercised in test_doomrocket_locomotion_animation.py;
 -- retain the strict hose engine doubles and all hose assertions in this harness.
@@ -226,6 +241,38 @@ mod._stop_warlock_locomotion_animation=function() end
 mod._reset_warlock_locomotion_animation=function() end
 mod._release_warlock_locomotion_world=function() end
 mod._update_warlock_locomotion_animation=function() end
+-- The read-only grip probe is exercised with strict pose doubles in its own suite.
+mod._start_warlock_weapon_pose_probe=function() end
+mod._stop_warlock_weapon_pose_probe=function() end
+mod._stop_warlock_weapon_pose_probe_item=function() end
+mod._reset_warlock_weapon_pose_probe=function() end
+-- Independent animation diagnostics/selection have dedicated executable suites.
+-- Keep the production hose reset and its lifetime assertions real here.
+mod._reset_warlock_animation_probe=function() end
+mod._reset_warlock_animation_rehearsal=function() end
+mod._release_warlock_weapon_pose_probe_world=function() end
+mod._queue_warlock_weapon_pose_probe=function() end
+mod._note_warlock_weapon_pose_event=function() end
+-- Living grip transfer has its own strict hierarchy/lifetime suite.
+mod._start_warlock_grip_alignment=function() end
+mod._stop_warlock_grip_alignment=function() end
+mod._stop_warlock_grip_alignment_item=function() end
+mod._resume_warlock_grip_alignment_item=function() end
+mod._reset_warlock_grip_alignment=function() end
+mod._release_warlock_grip_alignment_world=function() end
+mod._note_warlock_grip_alignment_event=function() end
+mod._queue_warlock_grip_alignment=function() end
+-- Audio ownership/teardown is exercised by the dedicated audio lifecycle suite.
+mod._stop_warlock_living_sounds=function() end
+mod._forget_warlock_audio_owner=function() end
+mod._release_warlock_audio_world=function() end
+-- The crystal flame has its own executable lifecycle suite.
+mod._start_warlock_crystal_flame=function() end
+mod._stop_warlock_crystal_flame=function() end
+mod._stop_warlock_crystal_flame_item=function() end
+mod._update_warlock_crystal_flame=function() end
+mod._reset_warlock_crystal_flame=function() end
+mod._release_warlock_crystal_flame_world=function() end
 function mod:package_status(name)
  assert(name=='resource_packages/doomrocket/warlock_child')
  return unavailable_package and 'not_loaded' or 'loaded'
@@ -720,6 +767,11 @@ class HoseHookIntegrationTests(unittest.TestCase):
                 assert(not captured[class][name]);captured[class][name]=fn
             end
             mod.hook_safe=mod.hook
+            function mod:pcall(fn,...)
+                local ok,result=pcall(fn,...)
+                if not ok then self.last_error=result end
+                return ok,result
+            end
             mod._stop_warlock_backpack_smoke=function() end
             mod._release_warlock_smoke_world=function() end
             function queue_warlock_death_drivers_for_world(w) end
@@ -789,6 +841,36 @@ class HoseHookIntegrationTests(unittest.TestCase):
                     assert(mod._doomrocket_hose_state.entries[owner].weapon==weapon)
                     tick();assert(events.spawned==1 and events.poses>0)
                 ''')
+
+    def test_probe_start_error_does_not_abort_native_inventory_setup(self):
+        self.load_hook('AIInventoryExtension', '_setup_configuration')
+        self.lua.execute('''
+            mod._warlock_outfits={};mod._warlock_carriers={}
+            mod._prune_armor_bridge=function() end
+            Unit.set_animation_bone_mode=function() end
+            Unit.set_bones_lod=function() end
+            Unit.enable_animation_state_machine=function() end
+            Unit.has_animation_event=function() return false end
+            mod._apply_warlock_child_materials=function() end
+            mod._start_warlock_backpack_sound=function() end
+            mod._start_warlock_backpack_smoke=function() end
+            function hide_warlock_carrier_meshes() return 1,1,true end
+            mod._start_warlock_weapon_pose_probe=function() error('probe start failed') end
+            inventory.inventory_item_units={};inventory.inventory_item_outfit_units={}
+            local native_calls=0
+            local result=captured[AIInventoryExtension]._setup_configuration(
+                function(self,u)
+                    assert(self==inventory and u==owner)
+                    native_calls=native_calls+1
+                    self.inventory_item_units={outfit,weapon}
+                    self.inventory_item_outfit_units={outfit}
+                    return 'native_result'
+                end,inventory,owner,1,'configuration','init_data')
+            assert(result=='native_result' and native_calls==1)
+            assert(mod._warlock_outfits[owner]==outfit)
+            assert(record_count()==1 and mod._doomrocket_hose_state.entries[owner].weapon==weapon)
+            assert(mod.last_error and mod.last_error:find('probe start failed',1,true))
+        ''')
 
     def test_drop_single_item_stops_before_native_actor_creation(self):
         self.load_hook('AIInventoryExtension', 'drop_single_item')
@@ -965,11 +1047,15 @@ class HoseHookIntegrationTests(unittest.TestCase):
                     mod._reset_warlock_backpack_smoke=function() end
                     mod._shutdown_doomrocket_audio=function() end
                     mod._reset_warlock_death_drivers=function() end
+                    mod._reset_warlock_traversal_pose=function()
+                        events.traversal_reset=(events.traversal_reset or 0)+1
+                    end
                 ''')
                 self.lua.execute(self.extract_one(
-                    BOOTSTRAP, r'^mod\.anim_emitters = \{\}.*?(?=^mod:dofile\("scripts/settings/breeds"\))'))
+                    BOOTSTRAP, r'^mod\.anim_emitters = \{\}.*?(?=^mod\.doom = true)'))
                 self.lua.execute('assert(start());tick();queue();' + callback + '''
                     drain();assert(record_count()==0 and events.destroyed==1)
+                    assert(events.traversal_reset==1)
                 ''')
 
 

@@ -2,7 +2,8 @@ local mod = get_mod("doomrocket")
 -- Your mod code goes here.
 -- https://vmf-docs.verminti.de
 
-local MOD_VERSION = "0.1.59-alpha"
+local MOD_VERSION = "0.1.60-alpha"
+mod._doomrocket_version = MOD_VERSION
 printf("[doomrocket:LOAD] v%s", MOD_VERSION)
 
 -- mod:dofile("scripts/mods/doomrocket/utils/LobbyManager")
@@ -22,12 +23,33 @@ mod:dofile("scripts/mods/doomrocket/interactions/doom_rocket_interaction")
 mod:dofile("scripts/mods/doomrocket/interactions/doom_rocket_pickup")
 mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_audio")
 mod._doomrocket_chimney_anchor = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_chimney_anchor")
+mod._warlock_effect_package = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_effect_package")
 mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_backpack_smoke")
+mod._doomrocket_crystal_anchor = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_crystal_anchor")
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_crystal_flame")
 mod._doomrocket_hose_profile = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_hose_profile")
 mod._doomrocket_hose_solver = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_hose_solver")
 mod._doomrocket_hose_frames = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_hose_frames")
 mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_hose")
+mod._warlock_animation_clock = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_animation_clock")
+mod._warlock_animation_manifest = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_animation_manifest")
+-- A separate trusted profile is inert until the explicit new-spawn rehearsal
+-- command selects it. Never replace a registered artist profile.
+local rehearsal_manifest = mod:dofile("scripts/mods/doomrocket/utils/doomrocket_native_rehearsal_manifest")
+for id, profile in pairs(rehearsal_manifest.profiles) do
+	if mod._warlock_animation_manifest.profiles[id] == nil then
+		mod._warlock_animation_manifest.profiles[id] = profile
+	end
+end
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_animation_rehearsal")
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_animation_ownership")
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_outfit_correction")
 mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_locomotion_animation")
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_grip_alignment")
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_traversal_pose")
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_animation_blend")
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_animation_probe")
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_weapon_pose_probe")
 mod:dofile("scripts/mods/doomrocket/utils/doomrocket_action_lookup")
 mod:dofile("scripts/mods/doomrocket/extensions/projectile_rocket")
 mod:dofile("scripts/mods/doomrocket/extensions/anim_emitter")
@@ -46,6 +68,7 @@ end
 mod:dofile("scripts/mods/doomrocket/behavior/nodes/skaven_doomrocket/generated/bt_selector_skaven_doomrocket")
 mod:dofile("scripts/mods/doomrocket/behavior/nodes/skaven_doomrocket/bt_doomrocket_shove_action")
 mod:dofile("scripts/mods/doomrocket/behavior/nodes/skaven_doomrocket/bt_doomrocket_reposition_action")
+mod:dofile("scripts/mods/doomrocket/utils/doomrocket_ballistics")
 mod:dofile("scripts/mods/doomrocket/behavior/nodes/skaven_doomrocket/bt_doomrocket_launch_action")
 mod:dofile("scripts/mods/doomrocket/behavior/nodes/skaven_doomrocket/bt_doomrocket_reload_action")
 mod:dofile("scripts/mods/doomrocket/behavior/nodes/skaven_doomrocket/trees/skaven/skaven_doomrocket_behavior")
@@ -59,6 +82,99 @@ mod:dofile("scripts/mods/doomrocket/rpc")
 
 --adds doomrocket killfeed icon
 UISettings.breed_textures['skaven_doomrocket'] = 'unit_frame_portrait_enemy_doomrocket'
+mod:dofile("scripts/mods/doomrocket/extensions/doomrocket_portrait_frame")
+
+-- #33: throw players into the air with the native flail, without the camera grab.
+-- Vanilla StatusUtils.set_catapulted_network routes a catapult to the victim's own
+-- peer, whose GenericStatusExtension.set_catapulted enters the flailing catapulted
+-- state and also force-turns the camera along the throw (force_look_rotation, a
+-- 0.3 s lerp that ignores look input). The catapulted state itself keeps look
+-- input. Route the same call through a mod RPC so the owning peer skips only that
+-- forced turn. Vanilla's own explosion push cannot carry the knockback either:
+-- math.auto_lerp(max_damage_radius, radius, push, 1, d) clamps to [push, 1], an
+-- empty range for any push above 1, so inside the blast it returns 1 m/s.
+local KNOCKBACK_NEAR_SPEED = 10 -- m/s horizontal within max_damage_radius
+local KNOCKBACK_FAR_SPEED = 3 -- m/s horizontal at the blast edge
+local KNOCKBACK_NEAR_LIFT = 5 -- m/s upward within max_damage_radius
+local KNOCKBACK_FAR_LIFT = 2.5 -- m/s upward at the blast edge
+
+local suppress_catapult_look = false
+
+mod:hook("PlayerUnitFirstPerson", "force_look_rotation", function (func, self, ...)
+	if suppress_catapult_look then
+		return
+	end
+
+	return func(self, ...)
+end)
+
+-- Runs on the peer that owns the player unit (or the host for its own player/bots).
+mod._doomrocket_catapult_local = function (unit, velocity)
+	local status_extension = unit and Unit.alive(unit) and ScriptUnit.has_extension(unit, "status_system")
+
+	if not status_extension or status_extension.is_husk or status_extension:is_disabled() then
+		return false
+	end
+
+	suppress_catapult_look = true
+
+	local ok = mod:pcall(status_extension.set_catapulted, status_extension, true, velocity)
+
+	suppress_catapult_look = false
+
+	return ok
+end
+
+mod:network_register("rpc_doomrocket_catapult", function (sender, go_id, x, y, z)
+	local unit_storage = Managers.state.unit_storage
+	local unit = unit_storage and type(go_id) == "number" and unit_storage:unit(go_id)
+
+	if not unit or type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number" then
+		return
+	end
+
+	mod._doomrocket_catapult_local(unit, Vector3(x, y, z))
+end)
+
+mod._doomrocket_knockback_player = function (hit_unit, damage_source, attacker_unit, impact_position, explosion_data)
+	if not DamageUtils.is_player_unit(hit_unit) then
+		return
+	end
+
+	local owner = Managers.player:unit_owner(hit_unit)
+	local status_extension = ScriptUnit.has_extension(hit_unit, "status_system")
+	local hit_position = POSITION_LOOKUP[hit_unit]
+
+	if not owner or not status_extension or status_extension:is_disabled() or not hit_position then
+		return
+	end
+
+	local direction, distance = Vector3.direction_length(Vector3.flat(hit_position - impact_position))
+
+	if distance < 0.01 then
+		local attacker_position = POSITION_LOOKUP[attacker_unit]
+
+		direction = attacker_position and Vector3.normalize(Vector3.flat(hit_position - attacker_position)) or Vector3.zero()
+	end
+
+	local inner_radius = explosion_data.max_damage_radius
+	local falloff = math.clamp((distance - inner_radius) / (explosion_data.radius - inner_radius), 0, 1)
+	local speed = KNOCKBACK_NEAR_SPEED + (KNOCKBACK_FAR_SPEED - KNOCKBACK_NEAR_SPEED) * falloff
+	local lift = KNOCKBACK_NEAR_LIFT + (KNOCKBACK_FAR_LIFT - KNOCKBACK_NEAR_LIFT) * falloff
+	local velocity = direction * speed + Vector3(0, 0, lift)
+
+	if not owner.remote then
+		mod._doomrocket_catapult_local(hit_unit, velocity)
+
+		return
+	end
+
+	local go_id = Managers.state.network:unit_game_object_id(hit_unit)
+
+	if go_id then
+		mod:network_send("rpc_doomrocket_catapult", owner:network_id(), go_id, velocity.x, velocity.y, velocity.z)
+	end
+end
 
 --setup rocket explosion template
 ExplosionTemplates["doomrocket_explosion"] = {
@@ -76,11 +192,11 @@ ExplosionTemplates["doomrocket_explosion"] = {
 		damage_profile = "warpfire_thrower_explosion",
 		effect_name = "fx/chr_warp_fire_explosion_01",
 		damage_type = "grenade",
-		catapult_force = 10,
-		catapult_players = true,
+		-- #33: no template catapult or native push; server_hit_func throws each player
+		-- with a distance-scaled catapult that leaves their camera alone.
+		server_hit_func = mod._doomrocket_knockback_player,
 		dont_rotate_fx = true,
 		allow_friendly_fire_override = true,
-		player_push_speed = 15,
 		ai_friendly_fire = true,
 		difficulty_power_level = {
 			easy = {
@@ -121,6 +237,30 @@ ExplosionTemplates["doomrocket_explosion"] = {
 
 -- ExplosionTemplates["doomrocket_explosion"].explosion["damage_type"] = "kinetic"
 ExplosionTemplates["doomrocket_explosion"].name = "doomrocket_explosion"
+
+-- #33: the rocket deals 40% less damage to other enemies, so more of them survive
+-- the blast for players to kill (temporary health). Vanilla only scales friendly
+-- fire for player attackers, so scale this explosion's final damage against AI.
+local DOOMROCKET_DAMAGE_SOURCE = "skaven_doomrocket"
+local DOOMROCKET_AI_DAMAGE_MULTIPLIER = 0.6
+
+local function scale_doomrocket_ai_damage(damage, ...)
+	return damage * DOOMROCKET_AI_DAMAGE_MULTIPLIER, ...
+end
+
+mod:hook(DamageUtils, "calculate_damage", function (func, damage_output, target_unit, attacker_unit, hit_zone_name, original_power_level, boost_curve, boost_damage_multiplier, is_critical_strike, damage_profile, target_index, backstab_multiplier, damage_source, ...)
+	if damage_source ~= DOOMROCKET_DAMAGE_SOURCE or not target_unit then
+		return func(damage_output, target_unit, attacker_unit, hit_zone_name, original_power_level, boost_curve, boost_damage_multiplier, is_critical_strike, damage_profile, target_index, backstab_multiplier, damage_source, ...)
+	end
+
+	local target_breed = Unit.alive(target_unit) and Unit.get_data(target_unit, "breed")
+
+	if not target_breed or target_breed.is_player then
+		return func(damage_output, target_unit, attacker_unit, hit_zone_name, original_power_level, boost_curve, boost_damage_multiplier, is_critical_strike, damage_profile, target_index, backstab_multiplier, damage_source, ...)
+	end
+
+	return scale_doomrocket_ai_damage(func(damage_output, target_unit, attacker_unit, hit_zone_name, original_power_level, boost_curve, boost_damage_multiplier, is_critical_strike, damage_profile, target_index, backstab_multiplier, damage_source, ...))
+end)
 
 local num_explosions = #NetworkLookup.explosion_templates
 NetworkLookup.explosion_templates[num_explosions + 1] = "doomrocket_explosion"
@@ -175,10 +315,12 @@ if spawn_mod then
 	end
 end
 
-for bt_name, bt_node in pairs(BreedBehaviors) do
-    bt_node[1] = "BTSelector_" .. bt_name
-    bt_node.name = bt_name .. "_GENERATED"
-end
+-- Vanilla bt_minion.lua already pointed its own trees at their precompiled
+-- selectors at boot. Only this mod's tree needs it; renaming every tree would
+-- also point other mods' plain-BTSelector trees at selector classes that do not
+-- exist.
+BreedBehaviors.skaven_doomrocket[1] = "BTSelector_skaven_doomrocket"
+BreedBehaviors.skaven_doomrocket.name = "skaven_doomrocket_GENERATED"
 
 local husk_num = #NetworkLookup.husks
 NetworkLookup.husks[husk_num + 1] = "units/rocket/SM_Rocket"
@@ -193,6 +335,12 @@ mod.anim_emitters = {}
 mod.projectiles = {}
 
 function mod.update(dt)
+	-- Retain one asynchronous cosmetic-package lease per active world. Starting
+	-- before ordinary emitter updates keeps first spawn out of sync-read/flush.
+	mod._prewarm_warlock_child_materials()
+	mod._prewarm_warlock_backpack_smoke()
+	mod._prewarm_warlock_crystal_flame()
+
     for unit_string,projectile in pairs(mod.projectiles) do
 		if unit_string then
 			projectile:update(dt)
@@ -205,12 +353,21 @@ function mod.update(dt)
 
 	mod._update_warlock_backpack_sounds()
 	mod._update_warlock_backpack_smoke()
+	mod._update_warlock_crystal_flame()
 end
 
 local function reset_warlock_runtime_state(reason, unload_bank)
+	mod._reset_warlock_animation_probe(reason or "runtime_reset")
+	mod._reset_warlock_animation_rehearsal()
 	mod._reset_warlock_locomotion_animation()
+	mod._reset_warlock_grip_alignment()
+	mod._reset_warlock_traversal_pose()
+	mod._reset_warlock_animation_ownership()
+	mod._reset_warlock_outfit_correction()
 	mod._reset_warlock_hose(reason or "runtime_reset")
+	mod._reset_warlock_weapon_pose_probe()
 	mod._reset_warlock_backpack_smoke(reason or "runtime_reset")
+	mod._reset_warlock_crystal_flame(reason or "runtime_reset")
 	mod._shutdown_doomrocket_audio(reason or "runtime_reset", unload_bank == true)
 
 	if mod._reset_warlock_death_drivers then
@@ -231,8 +388,6 @@ end
 function mod.on_unload()
 	reset_warlock_runtime_state("mod_unload", true)
 end
-
-mod:dofile("scripts/settings/breeds")
 
 -- utils/action_sweep_rewrite.lua (archived to _archive/) globally replaced
 -- ActionSweep._play_character_impact for every player and every melee weapon, purely to

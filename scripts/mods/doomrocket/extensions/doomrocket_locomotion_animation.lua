@@ -28,6 +28,11 @@ local function position(owner)
 	end
 end
 
+local function measured(owner, entry)
+	return not mod._warlock_animation_ownership
+		or mod._warlock_animation_ownership(owner, entry.outfit).speed == "measured"
+end
+
 function mod._stop_warlock_locomotion_animation(owner)
 	if owner then
 		entries[owner] = nil
@@ -67,7 +72,7 @@ function mod._start_warlock_locomotion_animation(owner, outfit)
 	local index = Unit.animation_find_variable(outfit, SPEED_VARIABLE)
 	local x, y = position(owner)
 	entries[owner] = { outfit = outfit, world = world, index = index, x = x, y = y }
-	Unit.animation_set_variable(outfit, index, 0)
+	if measured(owner, entries[owner]) then Unit.animation_set_variable(outfit, index, 0) end
 	return true
 end
 
@@ -83,7 +88,7 @@ function mod._update_warlock_locomotion_animation(world, dt)
 			elseif not finite(dt) or dt <= 0 or dt > MAX_SAMPLE_DT then
 				-- Pauses and long hitches have no trustworthy per-frame derivative.
 				entry.x, entry.y = nil, nil
-				Unit.animation_set_variable(entry.outfit, entry.index, 0)
+				if measured(owner, entry) then Unit.animation_set_variable(entry.outfit, entry.index, 0) end
 			else
 				local x, y = position(owner)
 				local speed = 0
@@ -99,7 +104,7 @@ function mod._update_warlock_locomotion_animation(world, dt)
 				end
 
 				entry.x, entry.y = x, y
-				Unit.animation_set_variable(entry.outfit, entry.index, speed)
+				if measured(owner, entry) then Unit.animation_set_variable(entry.outfit, entry.index, speed) end
 			end
 		end
 	end

@@ -44,6 +44,29 @@ local unit_delta_rotation = Unit.delta_rotation
 
 local linear_sphere_sweep = stingray.PhysicsWorld.linear_sphere_sweep
 
+-- #33: detonate on contact instead of after the physics body slides to a stop.
+-- Casts use vanilla's static-geometry projectile filter (player projectiles'
+-- static impacts) and the enemy projectile filter (the Globadier globe's
+-- impact raycast); near-miss c_afro volumes are ignored as vanilla does.
+local IMPACT_COLLISION_FILTERS = {
+    "filter_player_ray_projectile_static_only",
+    "filter_enemy_ray_projectile",
+}
+-- Seconds after launch before contacts count, so the muzzle is cleared.
+local IMPACT_ARM_TIME = 0.1
+-- Metres cast beyond one frame of travel: the rocket's half-length plus
+-- physics contact offset, so contact is seen before the body bounces.
+local IMPACT_MARGIN = 0.3
+local IMPACT_MIN_SPEED = 0.5
+-- Any physical contact changes the body's velocity far more in one frame than
+-- gravity does, so a velocity that leaves its ballistic prediction by more than
+-- this (m/s, plus a per-second allowance for damping on long frames) is a hit,
+-- whatever the collision filters can see. v0.1.81 logs showed most rockets
+-- still detonating 0.25-0.5 s late through the stop fallback.
+local IMPACT_DEVIATION = 1.5
+local IMPACT_DEVIATION_PER_S = 5
+local GRAVITY = 9.82
+
 ProjectileRocket = class(ProjectileRocket)
 
 ProjectileRocket.init = function (self, unit, attacker_unit, target_pos, launch_sound_unit, combat_voice_variant)
@@ -52,6 +75,13 @@ ProjectileRocket.init = function (self, unit, attacker_unit, target_pos, launch_
     self.unit = unit
     local actor = Unit.actor(unit, "throw")
     self.actor = actor
+	-- The native locomotion extension has already decoded the launch velocity.
+	-- Align and seed its path now, before the first physics step/update can use
+	-- an inherited carrier yaw or lose the initial contact segment.
+	local launch_velocity = Actor.velocity(actor)
+	self:straighten_rocket(launch_velocity)
+	Actor.set_angular_velocity(actor, Vector3.zero())
+	self:_remember_path(Actor.position(actor), launch_velocity)
     self.target_z = target_pos.z
     self.target_y = target_pos.y
     self.target_x = target_pos.x
@@ -71,7 +101,7 @@ ProjectileRocket.init = function (self, unit, attacker_unit, target_pos, launch_
 
 	-- Prefer the launcher's p_fx node; fall back to the projectile if the weapon vanished.
 	mod._play_doomrocket_launch_sound(
-		launch_sound_unit and Unit.alive(launch_sound_unit) and launch_sound_unit or unit)
+		launch_sound_unit and Unit.alive(launch_sound_unit) and launch_sound_unit or unit, attacker_unit)
 
     local position = Actor.position(actor)
     local rotation = Actor.rotation(actor)
@@ -115,11 +145,34 @@ ProjectileRocket.update = function (self, dt)
         self:straighten_rocket(vel)
         self:move_particles(self.actor)
 
+        local position = pos_actor(self.actor)
+
+        if self.time_pass > IMPACT_ARM_TIME and Managers.player.is_server then
+            local impact_position = self:_find_impact(position, vel, dt)
+
+            if impact_position then
+                self:_log_impact("contact", speed)
+                self:rocket_explode(impact_position)
+
+                return
+            end
+
+            if self:_left_ballistic_path(vel, dt) then
+                self:_log_impact("deviation", speed)
+                self:rocket_explode(position)
+
+                return
+            end
+        end
+
         -- The rocket is ballistic now (see ROCKET in bt_doomrocket_launch_action), so a
         -- slow high lob is nearly stationary in Z at the top of its arc. The old
         -- `speed < 4` test would detonate it in mid-air there. Detonate only on a real
         -- stop (impact), and only after it has cleared the muzzle.
+        -- #33: this now only backs up the contact casts above, for example when a
+        -- rocket settles too slowly for either cast to see the surface.
         if self.time_pass > 0.35 and speed < 1.5 then
+            self:_log_impact("stopped", speed)
             self:rocket_explode()
 
             return
@@ -128,6 +181,7 @@ ProjectileRocket.update = function (self, dt)
         self.time_pass = self.time_pass + dt
         self.current_direction = new_direction
         self.previous_speed = speed
+        self:_remember_path(position, vel)
     end
 end
 
@@ -135,6 +189,90 @@ ProjectileRocket.straighten_rocket = function(self, direction)
     local new_rotation = quat_look(direction)
     rotate_unit(self.unit, 0 , new_rotation)
     rotate_actor(self.actor, new_rotation)
+end
+
+-- Closest valid contact along one cast, ignoring the rocket and its shooter.
+ProjectileRocket._cast_for_impact = function(self, from, vel, dt)
+    local direction, speed = Vector3.direction_length(vel)
+
+    if speed < IMPACT_MIN_SPEED then
+        return nil
+    end
+
+    local physics_world = self.physics_world
+    local distance = speed * dt + IMPACT_MARGIN
+
+    PhysicsWorld.prepare_actors_for_raycast(physics_world, from, direction, 0, 1, distance * distance)
+
+    local impact_position, impact_distance
+
+    for f = 1, #IMPACT_COLLISION_FILTERS do
+        local hits = PhysicsWorld.immediate_raycast(physics_world, from, direction, distance, "all", "collision_filter", IMPACT_COLLISION_FILTERS[f])
+
+        for i = 1, hits and #hits or 0 do
+            local hit = hits[i]
+            local hit_actor = hit[4]
+            local hit_unit = hit_actor and Actor.unit(hit_actor)
+
+            if hit_unit and hit_unit ~= self.unit and hit_unit ~= self.attacker_unit
+                and Unit.actor(hit_unit, "c_afro") ~= hit_actor
+                and (not impact_distance or hit[2] < impact_distance) then
+                impact_position = hit[1]
+                impact_distance = hit[2]
+            end
+        end
+    end
+
+    return impact_position
+end
+
+-- Look ahead along this frame's velocity, so contact is caught before the
+-- physics step can bounce the body; then re-cast the path the rocket was on
+-- during the step that just elapsed (dt), which catches a contact that step
+-- already resolved into a bounce or slide.
+ProjectileRocket._find_impact = function(self, position, vel, dt)
+    local impact_position = self:_cast_for_impact(position, vel, dt)
+
+    if impact_position or not self.last_position_box then
+        return impact_position
+    end
+
+    return self:_cast_for_impact(self.last_position_box:unbox(), self.last_velocity_box:unbox(), dt)
+end
+
+-- True when this frame's velocity is not last frame's velocity plus gravity:
+-- the physics step resolved a contact (bounce, slide or graze) since then.
+ProjectileRocket._left_ballistic_path = function(self, vel, dt)
+    if not self.last_velocity_box or dt <= 0 then
+        return false
+    end
+
+    local last = self.last_velocity_box:unbox()
+
+    if magnitude(last) < IMPACT_MIN_SPEED then
+        return false
+    end
+
+    local expected = last + Vector3(0, 0, -GRAVITY * dt)
+
+    return magnitude(vel - expected) > IMPACT_DEVIATION + IMPACT_DEVIATION_PER_S * dt
+end
+
+ProjectileRocket._log_impact = function(self, reason, speed)
+    local position = self.actor and Actor.position(self.actor) or Vector3.zero()
+    printf("[doomrocket:IMPACT] reason=%s flight_s=%.2f speed=%.2f attacker_go_id=%s position=%.3f,%.3f,%.3f target=%.3f,%.3f,%.3f",
+        reason, self.time_pass or 0, speed or 0, tostring(self.attacker_goid),
+        position.x, position.y, position.z, self.target_x or 0, self.target_y or 0, self.target_z or 0)
+end
+
+ProjectileRocket._remember_path = function(self, position, vel)
+    if self.last_position_box then
+        self.last_position_box:store(position)
+        self.last_velocity_box:store(vel)
+    else
+        self.last_position_box = Vector3Box(position)
+        self.last_velocity_box = Vector3Box(vel)
+    end
 end
 
 -- No longer called from update. Kept for reference only.
@@ -157,7 +295,7 @@ end
 
 -- danger level similar to gas rat
 -- damage of 1000 is too high
-ProjectileRocket.rocket_explode = function(self)
+ProjectileRocket.rocket_explode = function(self, impact_position)
     if self.exploded or not Managers.player.is_server then
         return false
     end
@@ -183,6 +321,12 @@ ProjectileRocket.rocket_explode = function(self)
     -- The deletion mark below is deferred, but no later callback touches the actor.
     local position = actor and Actor.position(actor)
     local rotation = actor and Actor.rotation(actor)
+
+    -- #33: a detected contact detonates where the cast met the surface, not
+    -- up to one frame of travel short of it where the body is now.
+    if position and impact_position then
+        position = impact_position
+    end
 	local explosion_template_name = "doomrocket_explosion"
 	local explosion_template_id = NetworkLookup.explosion_templates[explosion_template_name]
 	local damage_source = "skaven_doomrocket"

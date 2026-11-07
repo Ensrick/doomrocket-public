@@ -182,6 +182,7 @@ class HoseCompiledTests(unittest.TestCase):
         resources = (
             "utils/doomrocket_hose_profile", "utils/doomrocket_hose_solver",
             "utils/doomrocket_hose_frames", "extensions/doomrocket_hose",
+            "extensions/doomrocket_traversal_pose",
             "doomrocket", "utils/hooks", "utils/doomrocket_action_lookup",
             "breeds/skaven_doomrocket",
             "behavior/nodes/skaven_doomrocket/bt_doomrocket_launch_action",

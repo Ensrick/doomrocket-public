@@ -13,11 +13,19 @@ Public release source for Warlock Engineer, the mod that adds the Warprocket Bom
 The public alpha retains the accepted body/weapon artwork and portrait.
 [v0.1.59-alpha](docs/releases/v0.1.59-alpha.md) is published and verified.
 
-v0.1.59-alpha deliberately promotes accepted crash, reload,
-shove/retreat, smoke, hose-physics and functional audio fixes. It retains public
-health/armor, projectile trajectory and aiming timing. Further balance, aim,
-audio and hand/weapon-sway work stays in development. See the
-[promotion record](docs/releases/v0.1.59-alpha.md) for current publication status.
+**v0.1.60-alpha is in preparation and has not been published.** The maintainer
+authorized promoting the improved tested default Warlock from TEST v0.1.98-dev.
+The selected scope includes the hose W-shape correction with the accepted sway
+settings, more convincing blended vault/fall/landing motion, accepted flame and
+balance changes, and the associated aiming, sound and compatibility fixes.
+Existing animation tracks and custom-pose ownership remain preserved. A stronger
+hose W shape remains a refinement; the separate custom-animation export and
+other open reports are not declared complete.
+
+See [project status](PROJECT_STATUS.md) and the
+[alpha60 promotion record](docs/releases/v0.1.60-alpha.md) for preparation and
+publication evidence. The original [alpha59 record](docs/releases/v0.1.59-alpha.md)
+retains its historical source and acceptance scope.
 
 Do not enable the public and TEST Workshop builds simultaneously. Every player
 in a lobby must install and enable the same version.
@@ -43,9 +51,10 @@ and select the form that matches what happened:
   feature suggestions.
 
 Before filing, restart the game after the Workshop update, copy the actual
-`[doomrocket:LOAD]` banner, and make sure the TEST build is disabled. The new
-release's banner is `[doomrocket:LOAD] v0.1.59-alpha`; do not report an older
-build as a test of these changes.
+`[doomrocket:LOAD]` banner, and make sure the TEST build is disabled. The
+currently verified banner is `[doomrocket:LOAD] v0.1.59-alpha`. Once the alpha60
+publication record is verified, its banner will be `[doomrocket:LOAD] v0.1.60-alpha`.
+Use the version actually loaded when reporting a result.
 Attach the complete console log from
 `%APPDATA%\Fatshark\Vermintide 2\console_logs\`; do not paste the entire file
 into the issue body. See [Bug-reporting instructions](docs/BUG_REPORTING.md) for

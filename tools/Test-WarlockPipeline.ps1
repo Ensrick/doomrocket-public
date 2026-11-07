@@ -6,6 +6,11 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $failures = New-Object System.Collections.Generic.List[string]
 
+& py -3 (Join-Path $PSScriptRoot 'tests\test_workshop_metadata_limits.py')
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("Workshop metadata byte-limit regressions failed (exit $LASTEXITCODE)")
+}
+
 function Assert-True {
     param([bool]$Condition, [string]$Message)
     if (-not $Condition) { $failures.Add($Message) }
@@ -62,26 +67,86 @@ $weaponRegression = Join-Path $PSScriptRoot 'tests\test_warlock_weapon_pipeline.
 if ($LASTEXITCODE -ne 0) {
     [void]$failures.Add("weapon source/runtime regression suite failed (exit $LASTEXITCODE)")
 }
-foreach ($regression in @(
-        'test_doomrocket_portrait_pipeline.py',
-        'test_public_target_safety.py',
-        'test_doomrocket_reload_lifecycle.py',
-        'test_doomrocket_reposition_lifecycle.py',
-        'test_doomrocket_action_lookup.py',
-        'test_doomrocket_projectile_lifecycle.py',
-        'test_doomrocket_sound_contract.py',
-        'test_doomrocket_chimney_anchor.py',
-        'test_doomrocket_backpack_smoke.py',
-        'test_doomrocket_hose_assets.py',
-        'test_doomrocket_hose_dynamics.py',
-        'test_doomrocket_hose_lifecycle.py',
-        'test_doomrocket_hose_pose_adapter.py',
-        'test_doomrocket_locomotion_animation.py',
-        'test_doomrocket_animation_callbacks.py')) {
-    & py -3 (Join-Path $PSScriptRoot "tests\$regression")
+$hoseAssetRegression = Join-Path $PSScriptRoot 'tests\test_doomrocket_hose_assets.py'
+& py -3 $hoseAssetRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("hose source/skin/material/profile regression suite failed (exit $LASTEXITCODE)")
+}
+$hoseDynamicsRegression = Join-Path $PSScriptRoot 'tests\test_doomrocket_hose_dynamics.py'
+& py -3 $hoseDynamicsRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("production semi-rigid hose physics/frame regression suite failed (exit $LASTEXITCODE)")
+}
+$portraitRegression = Join-Path $PSScriptRoot 'tests\test_doomrocket_portrait_pipeline.py'
+foreach ($integrationRegression in @('test_public_target_safety.py', 'test_doomrocket_hose_lifecycle.py', 'test_doomrocket_hose_pose_adapter.py', 'test_doomrocket_crystal_anchor.py',
+        'test_doomrocket_action_lookup.py', 'test_doomrocket_aim_timing.py',
+        'test_doomrocket_locomotion_animation.py', 'test_doomrocket_visible_aim.py',
+        'test_doomrocket_animation_callbacks.py', 'test_doomrocket_weapon_pose_probe.py',
+        'test_doomrocket_animation_clock.py', 'test_doomrocket_animation_probe.py',
+        'test_doomrocket_animation_rehearsal.py',
+        'test_doomrocket_grip_alignment.py', 'test_doomrocket_authored_weapon.py', 'test_doomrocket_traversal_pose.py', 'test_doomrocket_animation_ownership.py',
+        'test_doomrocket_animation_dispatch.py', 'test_doomrocket_animation_blend.py',
+        'test_doomrocket_inventory_animation_links.py',
+        'test_doomrocket_outfit_correction.py', 'test_stage_integration.py',
+        'test_animation_compiled_integration.py', 'test_animation_sampler_contract.py',
+        'test_animation_package_closure.py', 'test_compiled_lua_table.py',
+        'test_animation_blend_numeric.py', 'test_animation_blend_acceptance.py',
+        'test_native_pose_oracle_layers.py', 'test_animation_runtime_scene.py',
+        'test_animation_runtime_acceptance.py', 'test_animation_runtime_bridge.py')) {
+    & py -3 (Join-Path $PSScriptRoot "tests\$integrationRegression")
     if ($LASTEXITCODE -ne 0) {
-        [void]$failures.Add("$regression failed (exit $LASTEXITCODE)")
+        [void]$failures.Add("$integrationRegression failed (exit $LASTEXITCODE)")
     }
+}
+& py -3 $portraitRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("kill-feed portrait source/compiled regression suite failed (exit $LASTEXITCODE)")
+}
+foreach ($smokeRegression in @('test_doomrocket_chimney_anchor.py', 'test_doomrocket_backpack_smoke.py', 'test_doomrocket_crystal_flame.py',
+        'test_doomrocket_effect_package.py', 'test_doomrocket_child_material_prewarm.py', 'test_crystal_flame_native_effect.py')) {
+    & py -3 (Join-Path $PSScriptRoot "tests\$smokeRegression")
+    if ($LASTEXITCODE -ne 0) {
+        [void]$failures.Add("$smokeRegression failed (exit $LASTEXITCODE)")
+    }
+}
+
+$combatRegression = Join-Path $PSScriptRoot 'tests\test_warlock_combat_contract.py'
+& py -3 $combatRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("combat survivability/shove regression suite failed (exit $LASTEXITCODE)")
+}
+$reloadLifecycleRegression = Join-Path $PSScriptRoot 'tests\test_doomrocket_reload_lifecycle.py'
+& py -3 $reloadLifecycleRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("Doomrocket executable reload/shove lifecycle regression suite failed (exit $LASTEXITCODE)")
+}
+$repositionRegression = Join-Path $PSScriptRoot 'tests\test_doomrocket_reposition_lifecycle.py'
+& py -3 $repositionRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("Doomrocket executable reposition lifecycle regression suite failed (exit $LASTEXITCODE)")
+}
+$ballisticRegression = Join-Path $PSScriptRoot 'tests\test_doomrocket_ballistic_aim.py'
+& py -3 $ballisticRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("ballistic visual-aim/launch regression suite failed (exit $LASTEXITCODE)")
+}
+$soundRegression = Join-Path $PSScriptRoot 'tests\test_doomrocket_sound_contract.py'
+& py -3 (Join-Path $PSScriptRoot 'tests\test_doomrocket_hull_clearance.py')
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("Doomrocket hull/quantized clearance regression suite failed (exit $LASTEXITCODE)")
+}
+& py -3 $soundRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("Doomrocket sound-bank/runtime regression suite failed (exit $LASTEXITCODE)")
+}
+$projectileLifecycleRegression = Join-Path $PSScriptRoot 'tests\test_doomrocket_projectile_lifecycle.py'
+& py -3 (Join-Path $PSScriptRoot 'tests\test_doomrocket_audio_lifecycle.py')
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("Doomrocket executable audio teardown regression suite failed (exit $LASTEXITCODE)")
+}
+& py -3 $projectileLifecycleRegression
+if ($LASTEXITCODE -ne 0) {
+    [void]$failures.Add("Doomrocket projectile one-shot lifecycle regression suite failed (exit $LASTEXITCODE)")
 }
 
 # Every animation referenced by the state machine must exist as clip + recipe

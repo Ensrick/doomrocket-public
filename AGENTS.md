@@ -22,7 +22,9 @@ is claimed. Steam restart is exceptional recovery, not a routine ship step.
 ## Identity and boundaries
 
 - Canonical GitHub repository: `Ensrick/doomrocket-public`, remote `public`.
-- Local branch: `public-alpha`; it publishes to remote branch `main`.
+- Prepare on a feature branch and merge through a reviewed PR to remote `main`.
+- Final publication uses the clean exact live `main` commit, including a detached
+  checkout of that commit when another worktree owns the local branch.
 - Steam Workshop item: `3771657344`.
 - Required title shape: `Warlock Engineer v<version>-alpha`.
 - Development repository/worktree: `Ensrick/doomrocket-private` at
@@ -34,11 +36,37 @@ asset work directly to this release line. Implement and validate it in the
 development repository, then port it deliberately after in-game acceptance.
 
 The `origin` remote is dalo_kraff's historical upstream and is read-only for
-this maintenance line. Push public work only with:
+this maintenance line. Push preparation branches only to `public`, open a PR
+against `main`, and pass hosted QA before merging. Preserve unrelated edits in
+other worktrees; the clean public release checkout is separate from the older
+dirty `doomrocket-public` checkout.
 
-```powershell
-git push public public-alpha:main
-```
+## Current deliberate promotion, November 7, 2026
+
+The maintainer explicitly authorized promoting the improved tested default
+Warlock to the official item. Broker-allocated **v0.1.60-alpha is in preparation**;
+v0.1.59-alpha remains the last verified public publication. The selected source
+is TEST v0.1.98-dev, commit `e865b41768348e980e0b1cb80f0e5c68b0c397c6`.
+[The promotion record](docs/releases/v0.1.60-alpha.md) owns scope, acceptance,
+known limits and subsequent publication evidence.
+
+Carry the tested default runtime and its required resources without new tuning.
+Crunch accepts the improved traversal and hose sway, while asking for a stronger
+W shape as a remaining refinement. Keep the current accepted stiffness/damping,
+existing animation tracks and authored/custom ownership. The default authored
+manifest remains empty, the shipping body is unmarked, and rehearsal remains
+disabled until explicitly selected; no generated artist profile or localized
+body overlay is activated by this promotion.
+
+The thirteen calibrated original animation FBXs differ from alpha59 in the
+constant `aim_target` helper translation. Verify the non-helper tracks and helper
+rotations rather than claiming whole-file identity against alpha59. Require
+parity with the tested TEST98 sources apart from channel/version metadata.
+
+The existing game-absent publication-only exception applies. A build or upload
+does not add local native game evidence. Keep TEST item 3794172730 unchanged,
+and record fresh source/receipt, QA and native Workshop proof before calling
+alpha60 published or ready.
 
 ## Asset authorship boundary
 
@@ -59,6 +87,16 @@ supplies it.
 3. Verify `itemV2.cfg` still targets `3771657344`, is public, and has no `TEST`,
    `Currently Unstable`, or `-dev` title text.
 4. Treat GitHub Issues as the live backlog. Do not create a competing TODO list.
+
+## Build environment hygiene
+
+Keep temporary settings in copied child environments. If a PowerShell caller
+changes process environment values, save and restore them in `try/finally`.
+Never persist build settings, alter the user's PATH, dot-source a build launcher
+or install build-only tools globally. Every isolated `DOTNET_CLI_HOME` child must
+explicitly receive `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false` and
+`DOTNET_GENERATE_ASPNET_CERTIFICATE=false`. Preserve user/machine values and
+types, and do not restore a stale whole PATH over concurrent legitimate changes.
 
 ## Evidence and release rules
 

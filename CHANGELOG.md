@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.60-alpha - promote tested Warlock improvements (2026-11-07)
+
+- Deliberately port the playable TEST v0.1.98-dev runtime from reviewed source
+  `e865b41768348e980e0b1cb80f0e5c68b0c397c6`, following the maintainer's explicit
+  November 7 approval. Keep the official item, thumbnail and public VMB tooling.
+- Retain the accepted hose sway settings while restoring its authored W bends;
+  bridge the native jump/fall/landing motion onto the visible legacy body with
+  blended entry and recovery. Crunch calls the animation more convincing; a
+  stronger W remains a recorded refinement, not a new tuning change here.
+- Promote the accepted green crystal flame, quieter audio, aiming/balance and
+  portrait improvements, target/projectile safety, sound cleanup, material/effect
+  prewarming and compatibility fixes present in the tested default build.
+- Preserve the original animation tracks and custom-pose ownership. The thirteen
+  existing FBXs carry TEST's constant aim-target helper calibration; non-helper
+  animation data is preserved. Artist profiles and localized overlays remain
+  inactive by default; the optional rehearsal remains off.
+
+Build validation, hosted QA and canonical publication are pending. Current public
+alpha remains v0.1.59-alpha until the fresh Workshop transaction is verified.
+The absent-game publication-only exception applies; no deployment or local native
+game pass is claimed. See [promotion record](docs/releases/v0.1.60-alpha.md).
+
 ## v0.1.59-alpha - promote accepted TEST fixes
 
 - Prevent repeated projectile explosions and use the authoritative area-damage

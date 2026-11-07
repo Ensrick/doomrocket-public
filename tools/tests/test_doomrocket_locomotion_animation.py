@@ -353,7 +353,7 @@ class AnimationCompressionCompiledTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from test_warlock_weapon_pipeline import compiled_bundle_resources, compiled_unit_structure, resource_key
-        from compiled_animation_helpers import compiled_bones
+        from test_doomrocket_visible_aim import compiled_bones
         cls.resources = compiled_bundle_resources()
         unit = "units/warlock_bombardier/warlock_bombardier_3p"
         def resource(kind):
@@ -378,7 +378,7 @@ class AnimationCompressionCompiledTests(unittest.TestCase):
 
     def test_every_referenced_compiled_clip_preserves_sample_fit_and_whole_hips_curve(self):
         from test_warlock_weapon_pipeline import resource_key
-        from compiled_animation_helpers import compiled_reference_positions
+        from test_doomrocket_visible_aim import compiled_reference_positions
         for clip in sorted({state["clip"] for state in states().values()}):
             with self.subTest(clip=clip):
                 found = self.resources.get(resource_key("animation", clip), [])

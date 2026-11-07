@@ -17,7 +17,15 @@ Pickups.level_events.doom_rocket = {
 	wield_on_pickup = false,
 }
 
-mod:dofile('scripts/settings/equipment/pickups')
+-- Register only this pickup, the way vanilla pickups.lua registers its own.
+-- Re-running that whole vanilla file (the old approach) recreated every vanilla
+-- pickup table and LootRatPickups and re-normalized the DLC weights, discarding
+-- other mods' load-time pickup changes (#35). Level-event pickups are spawned by
+-- name, never by weighted draw, so this one needs no weight normalization.
+local doom_rocket_pickup = Pickups.level_events.doom_rocket
+
+doom_rocket_pickup.pickup_name = "doom_rocket"
+AllPickups.doom_rocket = doom_rocket_pickup
 
 function create_lookup(lookup, hashtable)
 	local i = #lookup

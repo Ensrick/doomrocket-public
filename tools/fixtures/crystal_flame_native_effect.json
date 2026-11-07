@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "status": "isolated native candidate; no runtime, colour or rendered-size acceptance",
+  "package": {
+    "path": "resource_packages/pickups.package",
+    "size": 7837,
+    "sha256": "985d8add0ffc56998ca4776fb45f1ff91527e17e771793bc30e6718bc87fba64",
+    "entry_count": 487,
+    "trailer_size": 41
+  },
+  "resources": {
+    "effect": {
+      "path": "fx/wpnfx_torch_local_space_3p.particles",
+      "type": "particles",
+      "id": "3DB3CE6438D57683",
+      "size": 1253,
+      "sha256": "b09f353565dfcc9dbe51a55b23fe488275f142b1b5b36c749b5dbb95fe958cce"
+    },
+    "child_material": {
+      "path": "A0EC15D2679F209F.material",
+      "type": "material",
+      "id": "A0EC15D2679F209F",
+      "size": 224,
+      "sha256": "1a214863a0df0d5b4b0f35c9cbc56f9b8b8481c959fb751459b08fd0be928c89"
+    },
+    "parent_material": {
+      "path": "EF52A5800BEB269E.material",
+      "type": "material",
+      "id": "EF52A5800BEB269E",
+      "size": 701408,
+      "sha256": "1a59063fcbfa890b0db36bc32c58fdd8e64c2b40e807bdd1ef162ad4237d55f6"
+    },
+    "texture": {
+      "path": "fx/textures/anim_smoke_4x8.texture",
+      "type": "texture",
+      "id": "73548ADEE6C02173",
+      "size": 2796492,
+      "sha256": "667a53ecd7d699f2c0e441309cfe80461f37275f35b76fa08ac7ee095e0aba87"
+    }
+  },
+  "particle": {
+    "version": 68,
+    "cloud_count": 1,
+    "cloud": {
+      "capacity": 40,
+      "initializer_types": [1, 1, 11, 1, 1, 6, 0],
+      "simulator_types": [0, 12, 17, 3, 1],
+      "initializer_offset": 208,
+      "simulator_offset": 336,
+      "renderer_offset": 361,
+      "visualizer_offset": 513,
+      "total_size": 1213,
+      "visualizer_count": 1,
+      "visualizer_type": 0,
+      "material_offset_from_visualizer": 12,
+      "material_id": "A0EC15D2679F209F"
+    }
+  },
+  "child": {
+    "parent_id": "EF52A5800BEB269E",
+    "texture_bindings": {"9CA38F7D": "73548ADEE6C02173"}
+  },
+  "parent": {
+    "parent_id": "0000000000000000",
+    "texture_bindings": {}
+  },
+  "derivative": {
+    "effect": "fx/doomrocket/crystal_torch_green_small",
+    "package": "resource_packages/doomrocket/warlock_crystal",
+    "scale": 0.6,
+    "tint": [
+      0.12,
+      1.0,
+      0.06
+    ],
+    "initializer_routes": [
+      [
+        1,
+        40
+      ],
+      [
+        1,
+        44
+      ],
+      [
+        11,
+        0
+      ],
+      [
+        1,
+        48
+      ],
+      [
+        1,
+        36
+      ],
+      [
+        6,
+        16
+      ],
+      [
+        0,
+        32
+      ]
+    ],
+    "source_size_range": [
+      0.10000000149011612,
+      0.20000000298023224
+    ],
+    "source_cylinder_radius_height": [
+      0.0,
+      0.0,
+      -0.10000000149011612,
+      0.0
+    ],
+    "source_acceleration": [
+      0.0,
+      0.0,
+      0.5
+    ],
+    "simulator_routes": [
+      [
+        0,
+        0
+      ],
+      [
+        12,
+        8
+      ],
+      [
+        17,
+        108
+      ],
+      [
+        3,
+        128
+      ],
+      [
+        1,
+        144
+      ]
+    ],
+    "writer_types": [
+      3,
+      4,
+      5,
+      0,
+      18,
+      5
+    ],
+    "source_gradient_times": [
+      0.0,
+      0.7580921053886414,
+      1.0
+    ],
+    "source_gradient_rgb": [
+      [
+        255.0,
+        255.0,
+        255.0
+      ],
+      [
+        84.0,
+        35.0,
+        5.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "compiler_contract": {
+      "path": "bin/stingray_win64_dev_x64.exe",
+      "sha256": "721bc354a520510ea270147c57230c87cc7e07d93f78ca1a0763d5bdb74137de",
+      "vertex_writer_table_rva": "0xE30EA0",
+      "billboard_compile_rva": "0x382FAC",
+      "vertex_writer_compile_rva": "0x49E8C0",
+      "size_writer_compile_rva": "0x49DCD0",
+      "color_writer_compile_rva": "0x49C090",
+      "rgb_curve_compile_rva": "0x49A2B0",
+      "acceleration_compile_rva": "0x484D00",
+      "scope": "Installed SDK read-only table/disassembly establishes typed writer IDs, body sizes, separate opacity/RGB curves and acceleration layout; no runtime render pass."
+    },
+    "sha256": "ec6ff22debdde907be3f396e3064586b914f2aa84228534d2b189a36774c4e51"
+  }
+}

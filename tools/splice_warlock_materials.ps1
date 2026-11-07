@@ -33,6 +33,7 @@ param(
     [string]$GameBundleDir = "C:\Program Files (x86)\Steam\steamapps\common\Warhammer Vermintide 2\bundle",
     [string]$UnpackerExe = "C:\Tools\vt2_bundle_unpacker\target\release\unpacker.exe",
     [string]$UnpackerDict = "C:\Users\danjo\source\repos\vt2_bundle_unpacker\dictionary.csv",
+    [string]$NativeEffectRoot = "D:\Game Mods\Vermintide 2 modding\VT2 Bundle Extract",
     [switch]$UseVerifiedCache,
     [switch]$PayloadOnly
 )
@@ -202,6 +203,13 @@ Invoke-Py @($makeTool,
     "--out", (Join-Path $buildDir "wb_whiskers_child.payload"))
 Assert-Sha256 (Join-Path $buildDir "wb_whiskers_child.payload") "680284D028524BB224667DD4FF14013CF3C52C66CA62CE83E6C392C6CE47571A"
 
+# Derive the existing game's torch under a mod-only identity. Its empty SDK
+# placeholder lives in a delayed package, loaded only after native pickups.
+# The recipe pins the donor/dependency hashes and parses every edited field.
+$flameTool = Join-Path $PSScriptRoot "build_crystal_flame_native_effect.py"
+$flamePayload = Join-Path $buildDir "crystal_torch_green_small.payload"
+Invoke-Py @($flameTool, "--extracted-root", $NativeEffectRoot, "--out", $flamePayload)
+
 # --- 3. Splice each payload into exactly one built bundle ------------------
 
 if ($PayloadOnly) {
@@ -239,3 +247,24 @@ foreach ($mat in $materials) {
 }
 
 Write-Host "[splice] OK - 6 warlock child materials carry game bindings"
+
+$flameResource = "fx/doomrocket/crystal_torch_green_small"
+$flameBundles = @()
+foreach ($bundleFile in (Get-ChildItem -LiteralPath $bundleRoot -Filter *.mod_bundle -File)) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & py -3 $spliceTool $bundleFile.FullName --type particles --name $flameResource --payload $flamePayload --dry-run *> $null
+        $probeExitCode = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousErrorActionPreference }
+    if ($probeExitCode -eq 0) {
+        Invoke-Py @($spliceTool, $bundleFile.FullName,
+            "--type", "particles", "--name", $flameResource, "--payload", $flamePayload)
+        $flameBundles += $bundleFile.Name
+    }
+}
+if ($flameBundles.Count -ne 1) {
+    throw "expected $flameResource in exactly 1 bundle, spliced into $($flameBundles.Count)"
+}
+Invoke-Py @($flameTool, "--extracted-root", $NativeEffectRoot, "--verify-bundle-root", $bundleRoot)
+Write-Host "[splice] OK - native green 0.6-scale torch and delayed package verified"

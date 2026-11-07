@@ -24,8 +24,17 @@ files, source provenance, runtime evidence and remaining limitations in a
 release record, then port only that scope. Keep public metadata, Workshop ID,
 preview, existing assets and unmodified gameplay intact.
 
-The [v0.1.59-alpha record](releases/v0.1.59-alpha.md) promotes the accepted
-crash, reload/shove/retreat, smoke, hose physics and functional audio fixes.
+The maintainer's November 7 instruction explicitly authorizes promoting the
+improved tested default runtime from TEST v0.1.98-dev, source
+`e865b41768348e980e0b1cb80f0e5c68b0c397c6`. Broker-allocated **v0.1.60-alpha is
+in preparation**, with build, hosted QA and fresh public publication still
+pending. The [alpha60 record](releases/v0.1.60-alpha.md) lists selected files,
+runtime feedback and known limits. Keep the accepted hose sway, existing tracks
+and custom ownership, without adding new tuning or activating artist profiles.
+
+The [v0.1.59-alpha record](releases/v0.1.59-alpha.md) retains its accepted
+crash, reload/shove/retreat, smoke, hose physics and functional audio scope and
+remains the last verified public publication.
 The earlier [v0.1.56-alpha record](releases/v0.1.56-alpha.md) documents its
 narrow portrait/target-guard promotion and exclusions at that time.
 
@@ -102,15 +111,40 @@ The protected/default-branch QA and fresh hosted receipt steps are unchanged.
 Use the same approved launcher executable and existing VMB project settings in
 both phases. The adapter creates a private settings copy for launcher children.
 
+Use one fixed session identity in every claim/build/ship child. Keep temporary
+settings in a copied child environment, or save and restore process values:
+
 ```powershell
-$env:VT2_SHIP_SESSION_ID = "warlock-<yyyymmdd>"   # same value for every step below
-$env:VT2_SHIP_VMB_LAUNCHER = $launcher            # approved standalone 0.6.4 build
-./tools/ship/claim.ps1 -Mod doomrocket -RepoRoot $PWD
-./tools/ship/ship.ps1 -BuildOnly -LauncherPath $launcher -ConfigPath $config
-# Commit source plus .build-receipt.json, push, pass hosted qa-gate, merge,
-# and update this checkout to the clean live default HEAD.
-./tools/ship/ship.ps1 -AllowPublic -PublicationOnly -LauncherPath $launcher -ConfigPath $config
+$warlockChildSettings = @{
+    VT2_SHIP_SESSION_ID = "warlock-alpha-<yyyymmdd>"
+    VT2_SHIP_VMB_LAUNCHER = $launcher  # approved standalone 0.6.4 build
+    DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "false"
+    DOTNET_GENERATE_ASPNET_CERTIFICATE = "false"
+}
+$warlockSavedSettings = @{}
+foreach ($name in $warlockChildSettings.Keys) {
+    $warlockSavedSettings[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+}
+try {
+    foreach ($name in $warlockChildSettings.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $warlockChildSettings[$name], "Process")
+    }
+    & ./tools/ship/claim.ps1 -Mod doomrocket -RepoRoot $PWD
+    & ./tools/ship/ship.ps1 -BuildOnly -LauncherPath $launcher -ConfigPath $config
+    # Commit source plus .build-receipt.json, push, pass hosted qa-gate, merge,
+    # and update this checkout to the clean live default HEAD before shipping.
+    & ./tools/ship/ship.ps1 -AllowPublic -PublicationOnly -LauncherPath $launcher -ConfigPath $config
+} finally {
+    foreach ($name in $warlockSavedSettings.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $warlockSavedSettings[$name], "Process")
+    }
+}
 ```
+
+Run these scripts normally rather than dot-sourcing them. Never persist build
+settings, change global PATH, write registry environment values, or install
+build-only tools globally. Every isolated .NET-home child must explicitly
+inherit both `false` flags above. Preserve existing user/machine values and types.
 
 The public adapter requires item `3771657344` and the `-alpha` suffix; it refuses
 the TEST item. The game is not installed, so use publication-only mode. No local

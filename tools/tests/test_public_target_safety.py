@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Exercise the public Lua actions at their engine boundary, not TEST gameplay.
+"""Exercise the promoted public Lua actions at their engine boundary.
 
 The strict fake Unit API raises on nil/deleted positional access. Notification
-counts enforce start/end pairing; projectile and reload checks pin the accepted
-public tuning. Native animation, physics, and multiplayer still need playtests.
+counts enforce start/end pairing; projectile and reload checks cover the
+deliberately promoted tuning. Native animation, physics, and multiplayer still
+need playtests.
 """
 
 from pathlib import Path
@@ -36,6 +37,9 @@ Vector3.right = function() return vector(1,0,0) end
 Vector3.flat = function(v) return vector(v.x,v.y,0) end
 Vector3.distance = function(a,b) return Vector3.length(a-b) end
 Vector3.length = function(v) return math.sqrt(v.x*v.x+v.y*v.y+v.z*v.z) end
+Vector3.dot = function(a,b) return a.x*b.x+a.y*b.y+a.z*b.z end
+Vector3.length_squared = function(v) return Vector3.dot(v,v) end
+Vector3.is_valid = function(v) return v ~= nil end
 Vector3.normalize = function(v) return v*(1/Vector3.length(v)) end
 Vector3.flat_angle = function() return 0 end
 function Vector3Box(v)
@@ -117,9 +121,15 @@ Managers = {state={
 }}
 Network = {peer_id=function() return 'host' end}
 AiAnimUtils = {
-    position_network_scale=function(v) return v end,
+    position_network_scale=function(v,sending)
+        if sending then return {math.floor(v.x*100+.5),math.floor(v.y*100+.5),math.floor(v.z*100+.5)} end
+        return vector(v[1]*.01,v[2]*.01,v[3]*.01)
+    end,
     rotation_network_scale=function(v) return v end,
-    velocity_network_scale=function(v) return v end,
+    velocity_network_scale=function(v,sending)
+        if sending then return {math.floor(v.x*10+.5),math.floor(v.y*10+.5),math.floor(v.z*10+.5)} end
+        return vector(v[1]*.1,v[2]*.1,v[3]*.1)
+    end,
 }
 LightWeightProjectiles = {test={spread=0,attack_power_level={1},impact_push_speed=0}}
 ProjectileRocket = {new=function(self,...)
@@ -148,6 +158,7 @@ end
 def create_runtime():
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute(HARNESS)
+    lua.execute((ROOT / "scripts/mods/doomrocket/utils/doomrocket_ballistics.lua").read_text(encoding="utf-8"))
     for action in ("launch", "reload"):
         lua.execute((NODES / f"bt_doomrocket_{action}_action.lua").read_text(encoding="utf-8"))
     lua.execute("attach()")
@@ -251,34 +262,57 @@ class PublicTargetSafetyTests(unittest.TestCase):
                     assert(events.accesses == previous_accesses)
                 """)
 
-    def test_live_obscured_target_survives_reload_update_and_launch_fallback(self):
+    def test_unperceived_live_target_cancels_without_access_notification_or_ammo_loss(self):
         self.lua.execute("""
             reload:enter(unit,blackboard,0)
             blackboard.perceived_target=nil
             blackboard.old_target_visible=false
             local data=blackboard.attack_pattern_data
+            local previous_accesses=events.accesses
             reload:_update_target(unit,blackboard,data,1)
-            assert(data.target_unit == target and data.target_obscured)
+            assert(data.target_unit == nil and data.target_obscured)
+            assert(events.accesses == previous_accesses)
             reload:leave(unit,blackboard,1,'done',false)
             launch:enter(unit,blackboard,1)
-            assert(data.target_unit == target and not data.invalid_target)
-            assert(events.starts == 1)
+            assert(data.invalid_target and launch:run(unit,blackboard,1,0) == 'failed')
+            launch:leave(unit,blackboard,1,'failed',false)
+            assert(events.starts == 0 and events.ends == 0 and blackboard.reloaded_rocket)
+        """)
+
+    def test_previously_visible_live_saved_target_retains_launch_fallback(self):
+        self.lua.execute("""
+            reload:enter(unit,blackboard,0)
+            blackboard.perceived_target=nil
+            blackboard.old_target_visible=true
+            local data=blackboard.attack_pattern_data
+            reload:_update_target(unit,blackboard,data,1)
+            assert(data.target_unit == target and not data.target_obscured)
+            reload:leave(unit,blackboard,1,'done',false)
+            launch:enter(unit,blackboard,1)
+            assert(not data.invalid_target and events.starts == 1)
             launch:leave(unit,blackboard,1,'aborted',false)
             assert(events.ends == 1)
         """)
 
-    def test_reload_entry_rejection_retains_live_saved_target(self):
+    def test_reload_rejects_unconfirmed_saved_target_then_recovers_when_perceived(self):
         self.lua.execute("""
             blackboard.perceived_target=nil
             blackboard.attack_pattern_data={target_unit=target,target_node_name='head'}
             reload:enter(unit,blackboard,0)
-            assert(blackboard.attack_pattern_data.target_unit == target)
+            assert(blackboard.attack_pattern_data.target_unit == nil)
             assert(reload:run(unit,blackboard,0,0) == 'failed')
             reload:leave(unit,blackboard,0,'failed',false)
             assert(events.accesses == 0)
             launch:enter(unit,blackboard,0)
+            assert(blackboard.attack_pattern_data.invalid_target and events.starts == 0)
+            launch:leave(unit,blackboard,0,'failed',false)
+            blackboard.perceived_target=target
+            reload:enter(unit,blackboard,1)
+            assert(reload:run(unit,blackboard,1,0) == 'done')
+            reload:leave(unit,blackboard,1,'done',false)
+            launch:enter(unit,blackboard,1)
             assert(events.starts == 1)
-            launch:leave(unit,blackboard,0,'aborted',false)
+            launch:leave(unit,blackboard,1,'aborted',false)
             assert(events.ends == 1)
         """)
 
@@ -344,29 +378,37 @@ class PublicTargetSafetyTests(unittest.TestCase):
             assert(#events.rpcs == 0)
         """)
 
-    def test_public_trajectory_and_projectile_rpc_are_unchanged(self):
-        for distance, flight_time in ((1, 1.7), (20, 2.6), (40, 3.4)):
+    def test_promoted_trajectory_keeps_quantized_hull_clearance_and_existing_rpc(self):
+        for distance, flight_time in ((1, 0.4), (20, 2.6), (40, 3.4)):
             with self.subTest(distance=distance):
                 self.setUp()
                 self.lua.globals().shot_distance = distance
                 self.lua.globals().expected_time = flight_time
                 self.lua.execute("""
                     target.position=Vector3(0,shot_distance,3)
+                    unit.position=Vector3(0,0,1)
                     blackboard.action=launch_action
                     blackboard.attack_pattern_data={target_unit=target,ratling_gun_unit=weapon}
                     launch._fire_from_position_direction=function() return unit.position,Vector3.forward() end
                     launch:_shoot(unit,blackboard,blackboard.attack_pattern_data)
-                    local v=events.spawn.data.projectile_locomotion_system.network_velocity
+                    local encoded=events.spawn.data.projectile_locomotion_system.network_velocity
+                    local v=AiAnimUtils.velocity_network_scale(encoded)
                     assert(v.x == 0)
-                    assert(math.abs(v.y-shot_distance/expected_time) < 0.000001)
-                    assert(math.abs(v.z-(3.25/expected_time+0.5*9.82*expected_time)) < 0.000001)
+                    assert(math.abs(v.y*expected_time-shot_distance) <= .05*expected_time+1e-8)
+                    local endpoint_z=unit.position.z+v.z*expected_time-.5*9.82*expected_time*expected_time
+                    local incoming=v-Vector3(0,0,9.82*expected_time)
+                    local speed=Vector3.length(incoming)
+                    local vertical=incoming.z/speed
+                    local longitudinal=vertical>=0 and .740 or .541
+                    local lower_support=longitudinal*math.abs(vertical)+.127*math.sqrt(1-vertical*vertical)
+                    assert(endpoint_z-target.position.z-lower_support >= .025-1e-8)
                     assert(events.spawn.name == 'units/rocket/SM_Rocket')
                     assert(events.spawn.template == 'explosive_pickup_projectile_unit')
                     assert(#events.projectile_args == 5 and events.projectile_args[5] == 1)
                     assert(#events.rpcs == 1 and #events.rpcs[1] == 7 and events.rpcs[1][7] == 1)
                     assert(events.rpcs[1][1] == 'rpc_launch_rocket')
                     assert(events.rpcs[1][2] == 'others' and events.rpcs[1][3] == 42)
-                    assert(events.rpcs[1][4] == v and events.rpcs[1][6] == 17)
+                    assert(events.rpcs[1][4] == encoded and events.rpcs[1][6] == 17)
                     assert(not blackboard.reloaded_rocket and not weapon.rocket_visible)
                 """)
 

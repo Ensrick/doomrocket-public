@@ -14,16 +14,49 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Steamworks' char buffers include the terminating NUL: 8000 and 128 + 1.
+# https://partner.steamgames.com/doc/api/ISteamUGC#SetItemDescription
+# https://partner.steamgames.com/doc/api/ISteamRemoteStorage#k_cchPublishedDocumentDescriptionMax
+# Reserve the terminator, measure encoded bytes, and reject embedded NULs.
+WORKSHOP_DESCRIPTION_MAX_BYTES = 7999
+WORKSHOP_TITLE_MAX_BYTES = 128
+
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
 def cfg_value(text: str, key: str) -> str:
-    match = re.search(rf'^\s*{re.escape(key)}\s*=\s*(?:"([^"]*)"|(\d+)L?)\s*;', text, re.MULTILINE)
+    match = re.search(
+        rf'^\s*{re.escape(key)}\s*=\s*(?:"((?:[^"\\]|\\.)*)"|(\d+)L?)\s*;',
+        text,
+        re.MULTILINE,
+    )
     if not match:
         raise ValueError(f"itemV2.cfg is missing {key!r}")
-    return match.group(1) if match.group(1) is not None else match.group(2)
+    if match.group(1) is None:
+        return match.group(2)
+    # Match the canonical launcher's ModDiscovery.Unescape order. In particular,
+    # count the decoded quote/newline/tab, not the cfg escape's source spelling.
+    return (match.group(1).replace('\\"', '"').replace('\\\\', '\\')
+            .replace('\\n', '\n').replace('\\t', '\t'))
+
+
+def check_workshop_metadata_limits(failures: list[str], title: str, description: str) -> None:
+    """Validate the parsed strings passed through canonical VMB upload staging."""
+    for key, value, maximum in (("title", title, WORKSHOP_TITLE_MAX_BYTES),
+                                 ("description", description, WORKSHOP_DESCRIPTION_MAX_BYTES)):
+        if "\0" in value:
+            failures.append(f"Workshop {key} contains an embedded NUL")
+            continue
+        # UploadStager.EscapeForCfg removes CRs before libconfig reads the
+        # staged string. Preserve LF/tab/Unicode, as that process does.
+        size = len(value.replace("\r", "").encode("utf-8"))
+        if size > maximum:
+            failures.append(
+                f"Workshop {key} is {size} UTF-8 bytes; maximum is {maximum} "
+                "bytes excluding the terminating NUL"
+            )
 
 
 def loaded_version() -> str:
@@ -95,6 +128,7 @@ def main() -> int:
         cfg = read("itemV2.cfg")
         version = loaded_version()
         title = cfg_value(cfg, "title")
+        description = cfg_value(cfg, "description")
         workshop_id = cfg_value(cfg, "published_id")
         visibility = cfg_value(cfg, "visibility")
         preview = cfg_value(cfg, "preview")
@@ -106,6 +140,7 @@ def main() -> int:
         failures.append("Workshop visibility must remain public")
     if title != ("Warlock Engineer v" + version if args.channel == "public" else "Warlock Engineer TEST v" + version):
         failures.append("Workshop title and Lua MOD_VERSION are out of sync")
+    check_workshop_metadata_limits(failures, title, description)
 
     if args.channel == "public":
         if workshop_id != "3771657344":

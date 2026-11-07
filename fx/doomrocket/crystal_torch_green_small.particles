@@ -1,0 +1,6 @@
+// Build placeholder only. The canonical post-compile splice replaces this
+// entire payload with the SHA-pinned derivative of the existing pickup torch.
+// Kept in the delayed warlock_crystal package, never the boot package.
+life_time = 1.0
+use_random_seed = true
+clouds = []
