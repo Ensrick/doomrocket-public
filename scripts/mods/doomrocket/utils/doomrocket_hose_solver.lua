@@ -55,7 +55,9 @@ function Solver.new(length, segments, damping, gravity)
         rx={},ry={},rz={}, lambdas={}, nx={},ny={},nz={},
         diagonal={}, upper={}, rhs={}, delta_lambda={},
         shape_x={},shape_y={},shape_z={}, shape_previous_x={},shape_previous_y={},shape_previous_z={},
-        shape_stiffness=100, shape_acceleration_limit=40, shape_points={},shape_count=0}, Solver)
+        shape_step_x={},shape_step_y={},shape_step_z={}, shape_damping_ratio=.6,
+        shape_error_x={},shape_error_y={},shape_error_z={},shape_fitting={},
+        shape_stiffness=140, shape_bend=2160, shape_acceleration_limit=40, shape_points={},shape_count=0}, Solver)
     -- All persistent numeric storage is allocated once, never per frame/substep.
     for i=1,self.n do
         self.x[i],self.y[i],self.z[i]=0,0,0
@@ -64,6 +66,9 @@ function Solver.new(length, segments, damping, gravity)
         self.rx[i],self.ry[i],self.rz[i]=0,0,0
         self.shape_x[i],self.shape_y[i],self.shape_z[i]=0,0,0
         self.shape_previous_x[i],self.shape_previous_y[i],self.shape_previous_z[i]=0,0,0
+        self.shape_step_x[i],self.shape_step_y[i],self.shape_step_z[i]=0,0,0
+        self.shape_error_x[i],self.shape_error_y[i],self.shape_error_z[i]=0,0,0
+        self.shape_fitting[i]=1+3*math.max(0,1-(math.min(i,self.n+1-i)-2)/4)
         if i<self.n then
             self.lambdas[i]=0
             self.rest_lengths[i]=authored_lengths and authored_lengths[i] or self.rest
@@ -77,9 +82,16 @@ end
 -- Distributed rest-shape springs add semi-rigidity without changing segment
 -- lengths or connecting the character/weapon physics actors. Targets are supplied
 -- in world metres by the measured authored-curve adapter, once per animation pass.
--- Stiffness 100 means acceleration 100 * displacement (s^-2), clamped to
--- 40 m/s^2. Damping is exponential velocity decay in s^-1; the game controller
--- supplies 5, while the standalone solver retains its legacy default of 1.5.
+-- Stiffness 140 means acceleration 140 * displacement (s^-2), clamped to
+-- 40 m/s^2. Shape damping uses 60% of critical spring damping (14.2 s^-1 at
+-- this stiffness), relative to the moving authored target. This damps flex, not
+-- the owner's world-space walking velocity. Unshaped chains retain their original
+-- exponential world-space damping; explicit stronger damping remains respected.
+-- A hose resists a sharp bend, so shape_bend (s^-2) also pulls each node's target
+-- error toward its neighbours'. Sag and sway then fade out over a few links next
+-- to a pinned end instead of kinking at it, without straightening the rest curve.
+-- shape_fitting stiffens the links beside each fitting, up to four times, so a
+-- fast launcher swing carries the end of the hose rather than folding it there.
 function Solver:set_shape_point(i,x,y,z)
     if not finite(i) or i~=floor(i) or i<1 or i>self.n
         or not finite(x) or not finite(y) or not finite(z)
@@ -94,6 +106,11 @@ end
 
 function Solver:enable_shape()
     if self.shape_count~=self.n then return false end
+    if not self.shape_ready then
+        for i=1,self.n do
+            self.shape_step_x[i],self.shape_step_y[i],self.shape_step_z[i]=self.shape_x[i],self.shape_y[i],self.shape_z[i]
+        end
+    end
     self.shape_ready=true
     return true
 end
@@ -112,6 +129,7 @@ function Solver:finish_reset(ax,ay,az,bx,by,bz,reason)
         self.rx[i],self.ry[i],self.rz[i]=x,y,z
         if self.shape_ready then
             self.shape_previous_x[i],self.shape_previous_y[i],self.shape_previous_z[i]=self.shape_x[i],self.shape_y[i],self.shape_z[i]
+            self.shape_step_x[i],self.shape_step_y[i],self.shape_step_z[i]=self.shape_x[i],self.shape_y[i],self.shape_z[i]
         end
     end
     self.ax,self.ay,self.az,self.bx,self.by,self.bz=ax,ay,az,bx,by,bz
@@ -261,25 +279,46 @@ end
 
 function Solver:step(ax,ay,az,bx,by,bz,shape_fraction)
     local x,y,z=self.x,self.y,self.z
-    local retention=exp(-self.damping*self.h)
+    local rate=self.damping
+    if self.shape_ready then rate=math.max(rate,2*sqrt(self.shape_stiffness)*self.shape_damping_ratio) end
+    local retention=exp(-rate*self.h)
+    local ex,ey,ez=self.shape_error_x,self.shape_error_y,self.shape_error_z
+    if self.shape_ready then
+        -- The pinned ends have no error by construction and stay at zero.
+        for i=2,self.n-1 do
+            ex[i],ey[i],ez[i]=x[i]-self.shape_step_x[i],y[i]-self.shape_step_y[i],z[i]-self.shape_step_z[i]
+        end
+    end
     for i=1,self.n do
         self.before_x[i],self.before_y[i],self.before_z[i]=x[i],y[i],z[i]
         if i>1 and i<self.n then
-            local sx,sy,sz=0,0,0
+            local sx,sy,sz,tx,ty,tz=0,0,0,0,0,0
             if self.shape_ready then
                 local f=shape_fraction or 1
-                sx=(self.shape_previous_x[i]+(self.shape_x[i]-self.shape_previous_x[i])*f-x[i])*self.shape_stiffness
-                sy=(self.shape_previous_y[i]+(self.shape_y[i]-self.shape_previous_y[i])*f-y[i])*self.shape_stiffness
-                sz=(self.shape_previous_z[i]+(self.shape_z[i]-self.shape_previous_z[i])*f-z[i])*self.shape_stiffness
+                local qx=self.shape_previous_x[i]+(self.shape_x[i]-self.shape_previous_x[i])*f
+                local qy=self.shape_previous_y[i]+(self.shape_y[i]-self.shape_previous_y[i])*f
+                local qz=self.shape_previous_z[i]+(self.shape_z[i]-self.shape_previous_z[i])*f
+                -- Keep the previous PHYSICAL sample: at >120 FPS a render frame
+                -- may not step. A per-render target delta would undercount its
+                -- motion and reintroduce frame-rate-dependent drag and flapping.
+                tx,ty,tz=qx-self.shape_step_x[i],qy-self.shape_step_y[i],qz-self.shape_step_z[i]
+                self.shape_step_x[i],self.shape_step_y[i],self.shape_step_z[i]=qx,qy,qz
+                -- Force is evaluated at the old physical time, just like x.
+                -- A next-time target would add an artificial 1-step lead even
+                -- after a constant carrier velocity has been fully acquired.
+                local stiffness=self.shape_stiffness*self.shape_fitting[i]
+                sx=(qx-tx-x[i])*stiffness+((ex[i-1]+ex[i+1])/2-ex[i])*self.shape_bend
+                sy=(qy-ty-y[i])*stiffness+((ey[i-1]+ey[i+1])/2-ey[i])*self.shape_bend
+                sz=(qz-tz-z[i])*stiffness+((ez[i-1]+ez[i+1])/2-ez[i])*self.shape_bend
                 local a=sqrt(sx*sx+sy*sy+sz*sz)
                 if a>self.shape_acceleration_limit then
                     local scale=self.shape_acceleration_limit/a
                     sx,sy,sz=sx*scale,sy*scale,sz*scale
                 end
             end
-            x[i]=x[i]+(x[i]-self.px[i])*retention+sx*self.h*self.h
-            y[i]=y[i]+(y[i]-self.py[i])*retention+sy*self.h*self.h
-            z[i]=z[i]+(z[i]-self.pz[i])*retention+(self.gravity+sz)*self.h*self.h
+            x[i]=x[i]+(x[i]-self.px[i])*retention+tx*(1-retention)+sx*self.h*self.h
+            y[i]=y[i]+(y[i]-self.py[i])*retention+ty*(1-retention)+sy*self.h*self.h
+            z[i]=z[i]+(z[i]-self.pz[i])*retention+tz*(1-retention)+(self.gravity+sz)*self.h*self.h
         end
     end
     x[1],y[1],z[1]=ax,ay,az; x[self.n],y[self.n],z[self.n]=bx,by,bz
@@ -289,6 +328,22 @@ function Solver:step(ax,ay,az,bx,by,bz,shape_fraction)
         self.px[i],self.py[i],self.pz[i]=self.before_x[i],self.before_y[i],self.before_z[i]
     end
     return true
+end
+
+-- Sharpest bend between adjacent rendered links, in degrees, and its control.
+function Solver:peak_bend()
+    local x,y,z=self.rx,self.ry,self.rz
+    local worst,where=0,0
+    for i=2,self.n-1 do
+        local ax,ay,az=x[i]-x[i-1],y[i]-y[i-1],z[i]-z[i-1]
+        local bx,by,bz=x[i+1]-x[i],y[i+1]-y[i],z[i+1]-z[i]
+        local scale=sqrt((ax*ax+ay*ay+az*az)*(bx*bx+by*by+bz*bz))
+        if scale>EPS then
+            local angle=math.acos(math.max(-1,min(1,(ax*bx+ay*by+az*bz)/scale)))
+            if angle>worst then worst,where=angle,i end
+        end
+    end
+    return math.deg(worst),where
 end
 
 function Solver:render_points(ax,ay,az,bx,by,bz)

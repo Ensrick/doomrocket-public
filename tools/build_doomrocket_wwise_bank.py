@@ -23,6 +23,7 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import shutil
 import struct
 import wave
@@ -40,6 +41,16 @@ DB_SCALING = 2
 LOOP_PROPERTY_ID = 0x3A
 ATTENUATION_PROPERTY_ID = 0x46
 TRANSITION_TIME_PROPERTY_ID = 0x10
+# Crunch's October 13 feedback: reduce the shipped TEST v0.1.88-dev recordings
+# by another 30% in amplitude. That build already applied 707/1000 to the
+# approved masters. Compose 7/10 with that gain and round PCM only once, so
+# repeated packaging never attenuates an already-rendered bank or edits a master.
+PREVIOUS_PLAYBACK_GAIN_NUMERATOR = 707
+PREVIOUS_PLAYBACK_GAIN_DENOMINATOR = 1000
+PLAYBACK_GAIN_ADJUSTMENT_NUMERATOR = 7
+PLAYBACK_GAIN_ADJUSTMENT_DENOMINATOR = 10
+PLAYBACK_GAIN_NUMERATOR = PREVIOUS_PLAYBACK_GAIN_NUMERATOR * PLAYBACK_GAIN_ADJUSTMENT_NUMERATOR
+PLAYBACK_GAIN_DENOMINATOR = PREVIOUS_PLAYBACK_GAIN_DENOMINATOR * PLAYBACK_GAIN_ADJUSTMENT_DENOMINATOR
 
 # Wwise 2018.1's generated Init bank establishes the standard VT2 custom-bank
 # project buses and output sink. This 1,552-byte product is byte-identical in
@@ -235,6 +246,17 @@ def make_pcm_wem(pcm: bytes) -> bytes:
     ) + bytes.fromhex("000001410000")
     body = chunk(b"fmt ", fmt) + chunk(b"JUNK", b"\0\0\0\0") + chunk(b"data", pcm)
     return b"RIFF" + struct.pack("<I", len(body) + 4) + b"WAVE" + body
+
+
+def playback_pcm(pcm: bytes) -> bytes:
+    """Apply the reviewed gain to signed 16-bit PCM without editing its master."""
+    if len(pcm) % 2:
+        raise ValueError("PCM payload is not aligned to signed 16-bit samples")
+    output = bytearray(len(pcm))
+    for offset, (sample,) in enumerate(struct.iter_unpack("<h", pcm)):
+        magnitude = (abs(sample) * PLAYBACK_GAIN_NUMERATOR + PLAYBACK_GAIN_DENOMINATOR // 2) // PLAYBACK_GAIN_DENOMINATOR
+        struct.pack_into("<h", output, offset * 2, -magnitude if sample < 0 else magnitude)
+    return bytes(output)
 
 
 def make_attenuation(attenuation_id: int, max_distance: float) -> bytes:
@@ -574,7 +596,7 @@ def build(source_dir: Path, repo_root: Path) -> dict[str, object]:
             raise AssertionError(f"staged source hash changed during copy: {canonical}")
 
         pcm, duration = read_pcm_wave(canonical)
-        wem = make_pcm_wem(pcm)
+        wem = make_pcm_wem(playback_pcm(pcm))
         assets.append(
             MediaAsset(
                 key=key,
@@ -627,6 +649,19 @@ def build(source_dir: Path, repo_root: Path) -> dict[str, object]:
             "evidence": "byte-identical Wwise 2018.1 product in Pusfume and Loremasters' Armoury",
         },
         "authoring": {
+            "playback_gain": {
+                "numerator": PLAYBACK_GAIN_NUMERATOR,
+                "denominator": PLAYBACK_GAIN_DENOMINATOR,
+                "approximate_db": round(20 * math.log10(PLAYBACK_GAIN_NUMERATOR / PLAYBACK_GAIN_DENOMINATOR), 2),
+            },
+            "playback_gain_adjustment": {
+                "relative_to": "TEST v0.1.88-dev",
+                "previous_numerator": PREVIOUS_PLAYBACK_GAIN_NUMERATOR,
+                "previous_denominator": PREVIOUS_PLAYBACK_GAIN_DENOMINATOR,
+                "numerator": PLAYBACK_GAIN_ADJUSTMENT_NUMERATOR,
+                "denominator": PLAYBACK_GAIN_ADJUSTMENT_DENOMINATOR,
+                "additional_db": round(20 * math.log10(PLAYBACK_GAIN_ADJUSTMENT_NUMERATOR / PLAYBACK_GAIN_ADJUSTMENT_DENOMINATOR), 2),
+            },
             "positioning": "3D emitter-relative, position and orientation",
             "attenuation_m": {"backpack": 45, "launch": 120, "impact": 120, "voice": 60},
             "backpack_loop": "infinite (Sound property 0x3A = 0)",
@@ -649,6 +684,7 @@ def build(source_dir: Path, repo_root: Path) -> dict[str, object]:
                 "canonical_source": asset.canonical_path.relative_to(repo_root).as_posix(),
                 "source_sha256": asset.source_sha256,
                 "pcm_sha256": sha256(read_pcm_wave(asset.canonical_path)[0]),
+                "playback_pcm_sha256": sha256(playback_pcm(read_pcm_wave(asset.canonical_path)[0])),
                 "wem_sha256": sha256(asset.wem),
                 "wem_bytes": len(asset.wem),
                 "duration_seconds": round(asset.duration_seconds, 6),

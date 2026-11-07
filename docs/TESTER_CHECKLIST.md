@@ -1,22 +1,45 @@
 # Public alpha checks
 
-For the published version, refresh the public Workshop subscription, disable
-the TEST item, restart Vermintide 2 and confirm the exact `[doomrocket:LOAD]`
-banner. [v0.1.59-alpha is published and verified](releases/v0.1.59-alpha.md).
+[v0.1.59-alpha remains the last verified public publication](releases/v0.1.59-alpha.md).
+**v0.1.60-alpha is being prepared and is not yet available as a verified update.**
+[Project status](../PROJECT_STATUS.md) and the
+[promotion record](releases/v0.1.60-alpha.md) will record the fresh transaction
+before alpha60 is handed off.
 
-One solo session is sufficient. Report what you observe in words and attach the
-complete matching console log. No video, second player or multiplayer test
-matrix is required. If a problem occurs while playing with friends, include that
-context in the ordinary bug report.
+For the published alpha, refresh the public Workshop subscription, disable TEST,
+restart Vermintide 2 in the Modded Realm, and retain the exact `[doomrocket:LOAD]`
+banner. Vermintide Mod Framework belongs above Warlock Engineer in the load order.
+Report the version actually loaded; alpha59's banner is
+`[doomrocket:LOAD] v0.1.59-alpha`.
 
-- Check normal spawning, repeated kills and career changes during combat.
-- Check that a completed reload survives a shove, nearby players trigger
-  shoves, and open-ground retreats create sustained separation.
-- Observe the backpack smoke and visible hose motion; report detached ends,
-  severe stretching or violent snapping.
-- Check that combat voice stops on death and each rocket detonates once.
-- Report the kill-feed portrait and any weapon/hand mismatch in words.
+## After verified alpha60 publication
 
-These checks do not claim that open sway, ground-shot, balance or Into the Nest
-arena reports are fixed. Follow the issue's latest status rather than repeating
-retired checklists. [Public reports](https://github.com/Ensrick/doomrocket-public/issues/new/choose).
+Confirm `[doomrocket:LOAD] v0.1.60-alpha` in the matching new log. During ordinary
+play, report any remaining hose-shape distortion or unnatural vault/landing and
+return to walking or aiming. Crunch has already supplied the TEST98 failure
+evidence and a positive traversal follow-up. Its accepted sway, flame colour/size,
+ordinary-spawn fix and prior accepted behavior need no repeated demonstration.
+The preference for a stronger W shape remains recorded as a refinement.
+
+The promotion keeps the existing animation tracks and custom-pose ownership.
+The normal shipping body remains on its default profile. This ordinary-play
+check does not accept a custom Blender export, localized outfit or native oracle;
+those separate authoring questions remain in development issue #53.
+
+Other issue-specific observations remain useful when they occur naturally:
+near-range clearance, launcher/hand alignment, rare sounds continuing after
+death, first-spawn stutter, facing and Into the Nest arena compatibility. Follow
+the current issue instructions; no single session must complete a test matrix.
+New source art and recordings remain Arnaud's work.
+
+## Report a result
+
+Describe what you saw or heard and attach the complete matching console log.
+For a crash, include the GUID/Crashify link when available. A written observation
+is sufficient. No video, second player or arranged multiplayer session is
+required; include the context if a problem occurs naturally with friends.
+
+These checks do not close unrelated alpha crash or corpse cleanup reports.
+The game's absence on the publishing machine is covered by the maintainer's
+publication-only exception, with no deployment or local game-launch claim.
+Use the [public issue chooser](https://github.com/Ensrick/doomrocket-public/issues/new/choose).

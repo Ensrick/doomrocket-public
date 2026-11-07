@@ -63,9 +63,10 @@ local function stop(owner,reason)
     state.entries[owner]=nil
     if state.outfits[entry.outfit]==owner then state.outfits[entry.outfit]=nil end
     destroy_visual(entry)
-    printf("[doomrocket:HOSE] phase=stop id=%d reason=%s callbacks=%d updates=%d writes=%d spawns=%d removals=%d last_reason=%s pending=%s",
+    printf("[doomrocket:HOSE] phase=stop id=%d reason=%s callbacks=%d updates=%d writes=%d spawns=%d removals=%d last_reason=%s pending=%s span_min=%.3f span_max=%.3f bend_peak=%.1f bend_control=%d",
         entry.id,tostring(reason),entry.callbacks or 0,entry.updates or 0,entry.written_frames or 0,
-        entry.spawn_attempts or 0,entry.visual_removals or 0,tostring(entry.last_reason),tostring(state.pending))
+        entry.spawn_attempts or 0,entry.visual_removals or 0,tostring(entry.last_reason),tostring(state.pending),
+        entry.span_min or 0,entry.span_max or 0,entry.bend_peak or 0,entry.bend_control or 0)
     return true
 end
 
@@ -209,8 +210,10 @@ local function update_entry(entry,dt)
     local a,b=entry.pack.position,entry.weapon_frame.position
     if not entry.endpoints_reported then
         entry.endpoints_reported=true
-        printf("[doomrocket:HOSE] phase=endpoints id=%d dt=%.6f length=%.6f pack=%.6f,%.6f,%.6f weapon=%.6f,%.6f,%.6f",
-            entry.id,dt,solver.length,a[1],a[2],a[3],b[1],b[2],b[3])
+        local pack_y,weapon_y=entry.pack.y_axis,entry.weapon_frame.y_axis
+        printf("[doomrocket:HOSE] phase=endpoints id=%d dt=%.6f length=%.6f pack=%.6f,%.6f,%.6f weapon=%.6f,%.6f,%.6f pack_y=%.3f,%.3f,%.3f weapon_y=%.3f,%.3f,%.3f",
+            entry.id,dt,solver.length,a[1],a[2],a[3],b[1],b[2],b[3],
+            pack_y[1],pack_y[2],pack_y[3],weapon_y[1],weapon_y[2],weapon_y[3])
     end
     local visible,reason=solver:frame(dt,a[1],a[2],a[3],b[1],b[2],b[3])
     local frames_valid=visible and frames:update(solver,entry.pack,entry.weapon_frame,reason~="simulated" and reason~="paused")
@@ -246,6 +249,15 @@ local function update_entry(entry,dt)
     Unit.set_unit_visibility(entry.visual,true)
     entry.written_frames=(entry.written_frames or 0)+1
     entry.last_reason=nil
+    -- Six-frame cadence: a kink shows in the log without per-frame angle work.
+    if entry.written_frames%6==1 then
+        local dx,dy,dz=b[1]-a[1],b[2]-a[2],b[3]-a[3]
+        local span=math.sqrt(dx*dx+dy*dy+dz*dz)
+        entry.span_min=math.min(entry.span_min or span,span)
+        entry.span_max=math.max(entry.span_max or span,span)
+        local bend,control=solver:peak_bend()
+        if bend>(entry.bend_peak or -1) then entry.bend_peak,entry.bend_control=bend,control end
+    end
     if entry.written_frames==1 then
         printf("[doomrocket:HOSE] phase=pose_write id=%d controls=%d visibility_requested=true first_%s last_%s",
             entry.id,#entry.nodes,pose_summary(Unit.world_pose(entry.visual,entry.nodes[1].node)),
@@ -254,7 +266,9 @@ local function update_entry(entry,dt)
     entry.elapsed=(entry.elapsed or 0)+dt
     if not entry.sampled and entry.elapsed>=3 then
         entry.sampled=true
-        printf("[doomrocket:HOSE] phase=sample id=%d simulated_steps=%d resets=%d length_error=%.6f",entry.id,solver.steps,solver.resets,solver:length_error(solver.rx,solver.ry,solver.rz))
+        printf("[doomrocket:HOSE] phase=sample id=%d simulated_steps=%d resets=%d length_error=%.6f span_min=%.3f span_max=%.3f bend_peak=%.1f bend_control=%d twist=%.1f",
+            entry.id,solver.steps,solver.resets,solver:length_error(solver.rx,solver.ry,solver.rz),
+            entry.span_min or 0,entry.span_max or 0,entry.bend_peak or 0,entry.bend_control or 0,math.deg(frames.twist))
     end
 end
 

@@ -39,9 +39,7 @@ BTDoomrocketReloadAction.enter = function (self, unit, blackboard, t)
 		data.target_obscured = false
 		data.target_check = t + 0.05 + Math.random() * 0.025
 	else
-		if data.target_unit and not Unit.alive(data.target_unit) then
-			data.target_unit = nil
-		end
+		data.target_unit = nil
 		data.abort_windup = true
 		return
 	end
@@ -101,11 +99,7 @@ BTDoomrocketReloadAction._update_target = function (self, unit, blackboard, data
 
 		data.target_obscured = false
 	else
-		-- Ordinary occlusion still needs the live saved target for launch fallback.
-		if data.target_unit and not Unit.alive(data.target_unit) then
-			data.target_unit = nil
-		end
-
+		data.target_unit = nil
 		data.target_obscured = true
 	end
 

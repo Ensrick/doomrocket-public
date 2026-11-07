@@ -34,6 +34,10 @@ end
 
 
 Breeds.skaven_doomrocket = table.clone(Breeds.skaven_ratling_gunner)
+-- #33: Ratling Gunner health and armor, so the Engineer has the Ratling's
+-- breakpoints (a glass cannon) instead of the earlier Stormvermin health.
+-- table.clone deep-copies max_health, so mutators that edit breed health
+-- tables in place cannot leak between the two breeds.
 Breeds.skaven_doomrocket.aim_template = "doomrocket"
 Breeds.skaven_doomrocket.behavior = "skaven_doomrocket"
 Breeds.skaven_doomrocket.threat_value = 7
@@ -63,7 +67,8 @@ Breeds.skaven_doomrocket.default_inventory_template = "doomrocket_inventory"
 -- identity comes from the breed's behavior tree, inventory and aim template, not from the
 -- extension list.
 Breeds.skaven_doomrocket.death_reaction = "doomrocket"
--- Custom death playback owns the event and first stops active combat voice.
+-- The cloned Ratling death event would overlap the custom Warlock takes below. Death
+-- playback is selected per corpse in the custom unit/husk reaction instead.
 Breeds.skaven_doomrocket.death_sound_event = nil
 
 -- The bombardier unit carries its own state machine, which lacks the hit_reaction_*
@@ -87,6 +92,10 @@ BreedActions.skaven_doomrocket.fire_rocket = table.clone(BreedActions.skaven_doo
 BreedActions.skaven_doomrocket.fire_rocket.name = "fire_rocket"
 BreedActions.skaven_doomrocket.shoot_ratling_gun = nil
 BreedActions.skaven_doomrocket.fire_rocket.light_weight_projectile_template_name = "doomrocket"
+-- #16/#33: hold the visible aim for at least two seconds before the native
+-- firing animation starts (was one second), so players have time to hear
+-- the cue and react. Reload and shot cues are unchanged.
+BreedActions.skaven_doomrocket.fire_rocket.minimum_aim_time = 2.0
 
 -- Reuse the Stormvermin's zero-damage shove and push force, but
 -- not its animation callback node.  The living Doomrocket uses the Ratling
@@ -124,6 +133,52 @@ BreedActions.skaven_doomrocket.switch_weapons = {
     cooldown = -1,
     switching_done_time = 0.2
 }
+
+-- Vanilla scripts/settings/breeds.lua finishes every breed after the breed
+-- files run: name, category mask, race/elite sets and action names. Do the same
+-- for this breed only. This mod used to re-run that whole vanilla file, which
+-- re-executed every vanilla breed file and overwrote other mods' load-time
+-- changes to vanilla breeds. Dutch Spice hooks
+-- Breeds.skaven_storm_vermin_warlord.run_on_update to spawn its Into the Nest
+-- arena waves; the re-run put the vanilla function back, so the wave never
+-- came (#34, #35). Everything else is inherited from the finished donor clone.
+local BREED_RACE_SETS = {
+	chaos = CHAOS,
+	skaven = SKAVEN,
+	beastmen = BEASTMEN,
+	undead = UNDEAD,
+	critter = CRITTER,
+}
+
+local function finish_breed_registration(breed_name)
+	local breed = Breeds[breed_name]
+	local hit_zones_lookup = BreedHitZonesLookup[breed_name]
+
+	if hit_zones_lookup then
+		breed.hit_zones_lookup = hit_zones_lookup
+	end
+
+	BreedUtils.inject_breed_category_mask(breed)
+
+	breed.name = breed_name
+	breed.is_ai = true
+
+	local race_set = BREED_RACE_SETS[breed.race]
+
+	if race_set then
+		race_set[breed_name] = true
+	end
+
+	if breed.elite then
+		ELITES[breed_name] = true
+	end
+
+	for action_name, action_data in pairs(BreedActions[breed_name]) do
+		action_data.name = action_name
+	end
+end
+
+finish_breed_registration("skaven_doomrocket")
 
 
 Dismemberments["skaven_doomrocket"] = table.clone(Dismemberments["skaven_ratling_gunner"])

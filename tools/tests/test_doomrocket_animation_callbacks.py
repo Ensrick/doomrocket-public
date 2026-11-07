@@ -28,6 +28,7 @@ local function event(name) events[#events+1]=name end
 local function engine(w,dt,...)
  event('animation:'..w.name)
  assert(w.gait_dt==dt,'gait must precede native animation')
+ assert(w.blend_dt==dt,'presentation sampler must update before native animation')
  w.engine_args={n=select('#',...),...}
  if w.engine_error then error('engine failed') end
  for driver in pairs(mod._warlock_active_death_drivers) do
@@ -58,7 +59,15 @@ function mod:pcall(fn,...)
  return ok
 end
 function mod._update_warlock_locomotion_animation(w,dt)
+ assert(w.ownership_dt==dt,'blend ownership must advance before gait')
  event('gait:'..w.name); w.gait_dt=dt
+end
+function mod._update_warlock_animation_ownership(w,dt)
+ event('ownership:'..w.name); w.ownership_dt=dt
+end
+function mod._update_warlock_animation_blend(w,dt)
+ assert(w.gait_dt==dt,'sampler inputs must follow current measured gait')
+ event('blend:'..w.name); w.blend_dt=dt
 end
 function mod._queue_warlock_hose(w,dt)
  assert(w.animated,'hose queued before native animation')
@@ -68,6 +77,7 @@ function mod._queue_warlock_hose(w,dt)
 end
 -- The independent grip probe's queue and lifetime are covered by its own suite.
 function mod._queue_warlock_weapon_pose_probe(w,dt) end
+function mod._queue_warlock_grip_alignment(w,dt) end
 animation_system={add_safe_animation_callback=function(self,cb)
  event('ragdoll_queue'); callbacks[#callbacks+1]=cb
 end}
@@ -136,14 +146,14 @@ class AnimationCallbackTests(unittest.TestCase):
                         assert(driver.callback_pending and driver.writes==0)
                         assert(#callbacks==2,'ragdoll and hose both need callbacks')
                         assert(table.concat(events,',')==
-                            'gait:game,animation:game,ragdoll_queue,hose_queue:game')
+                            'ownership:game,gait:game,blend:game,animation:game,ragdoll_queue,hose_queue:game')
                         assert(world.engine_args.n==3 and world.engine_args[1]=='native-callback'
                             and world.engine_args[2]==nil and world.engine_args[3]==23)
                         drain_and_update_scene(world)
                         assert(driver.writes==1 and driver.outfit.pose==1)
                         assert(not driver.callback_pending)
                         assert(table.concat(events,',')==
-                            'gait:game,animation:game,ragdoll_queue,hose_queue:game,'..
+                            'ownership:game,gait:game,blend:game,animation:game,ragdoll_queue,hose_queue:game,'..
                             'ragdoll_pose:'..source..',hose_pose:game,scene:game')
                     """)
 

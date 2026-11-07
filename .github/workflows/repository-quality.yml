@@ -35,12 +35,106 @@ jobs:
       - name: Install validation dependencies
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
 
-      - name: Check release-channel and repository metadata
+      - name: Check public-alpha channel metadata
         run: python tools/check_repository.py --channel public
+
+      - name: Guard Workshop metadata UTF-8 byte limits
+        run: python tools/tests/test_workshop_metadata_limits.py
 
       - name: Verify standalone publication commit paths
         shell: pwsh
         run: ./tools/tests/Test-WarlockPublicationLayout.ps1
+
+      - name: Run public target-safety regressions
+        run: python tools/tests/test_public_target_safety.py
+
+      - name: Run combat contracts
+        run: python tools/tests/test_warlock_combat_contract.py
+
+      - name: Run executable reload and shove lifecycle tests
+        run: python tools/tests/test_doomrocket_reload_lifecycle.py
+
+      - name: Run ballistic aiming contracts
+        run: python tools/tests/test_doomrocket_ballistic_aim.py
+
+      - name: Run finite hull and quantized clearance regressions
+        run: python tools/tests/test_doomrocket_hull_clearance.py
+
+      - name: Run executable reposition lifecycle tests
+        run: python tools/tests/test_doomrocket_reposition_lifecycle.py
+
+      - name: Run custom action network lookup regressions
+        run: python tools/tests/test_doomrocket_action_lookup.py
+
+      - name: Run vanilla table compatibility regressions
+        run: python tools/tests/test_doomrocket_vanilla_table_compat.py
+
+      - name: Run minimum aim timing regressions
+        run: python tools/tests/test_doomrocket_aim_timing.py
+
+      - name: Run visible locomotion animation regressions
+        run: python tools/tests/test_doomrocket_locomotion_animation.py
+
+      - name: Run animation callback ownership regressions
+        run: python tools/tests/test_doomrocket_animation_callbacks.py
+
+      - name: Run visible aim ownership and compiled constraint regressions
+        run: python tools/tests/test_doomrocket_visible_aim.py
+
+      - name: Run projectile lifecycle contracts
+        run: python tools/tests/test_doomrocket_projectile_lifecycle.py
+
+      - name: Run rocket contact detonation tests
+        run: python tools/tests/test_doomrocket_rocket_impact.py
+
+      - name: Run balance contracts (knockback, AI damage)
+        run: python tools/tests/test_doomrocket_balance_contract.py
+
+      - name: Run sound contracts
+        run: python tools/tests/test_doomrocket_sound_contract.py
+
+      - name: Run executable audio teardown regressions
+        run: python tools/tests/test_doomrocket_audio_lifecycle.py
+
+      - name: Run weapon pose diagnostics regressions
+        run: python tools/tests/test_doomrocket_weapon_pose_probe.py
+
+      - name: Run upper-body grip alignment regressions
+        run: |
+          python tools/tests/test_doomrocket_grip_alignment.py
+          python tools/tests/test_doomrocket_authored_weapon.py
+
+      - name: Run legacy traversal and custom-pose ownership regressions
+        run: python tools/tests/test_doomrocket_traversal_pose.py
+
+      - name: Run authored animation ownership and dispatch regressions
+        run: |
+          python tools/tests/test_doomrocket_animation_ownership.py
+          python tools/tests/test_doomrocket_animation_dispatch.py
+          python tools/tests/test_doomrocket_animation_clock.py
+          python tools/tests/test_doomrocket_animation_blend.py
+          python tools/tests/test_doomrocket_animation_probe.py
+          python tools/tests/test_doomrocket_animation_rehearsal.py
+          python tools/tests/test_doomrocket_inventory_animation_links.py
+
+      - name: Run opt-in outfit correction regressions
+        run: python tools/tests/test_doomrocket_outfit_correction.py
+
+      - name: Run isolated animation integration staging guards
+        run: python tools/tests/test_stage_integration.py
+
+      - name: Run compiled integration metadata and runtime scene guards
+        run: |
+          python tools/tests/test_animation_compiled_integration.py
+          python tools/tests/test_animation_sampler_contract.py
+          python tools/tests/test_animation_package_closure.py
+          python tools/tests/test_compiled_lua_table.py
+          python tools/tests/test_animation_blend_numeric.py
+          python tools/tests/test_animation_blend_acceptance.py
+          python tools/tests/test_animation_runtime_scene.py
+          python tools/tests/test_native_pose_oracle_layers.py
+          python tools/tests/test_animation_runtime_acceptance.py
+          python tools/tests/test_animation_runtime_bridge.py
 
       - name: Run retargeting math tests
         run: python tools/tests/test_warlock_retarget_math.py
@@ -48,53 +142,67 @@ jobs:
       - name: Run texture and material source tests
         run: python tools/tests/test_warlock_texture_pipeline.py
 
+      - name: Run kill-feed portrait contracts
+        run: python tools/tests/test_doomrocket_portrait_pipeline.py
+
+      - name: Run kill-feed portrait frame tests
+        run: python tools/tests/test_doomrocket_portrait_frame.py
+
       - name: Run weapon source and contract tests
         run: python tools/tests/test_warlock_weapon_pipeline.py
 
-      - name: Run portrait provenance and atlas tests
-        run: python tools/tests/test_doomrocket_portrait_pipeline.py
-
-      - name: Run public target-safety Lua tests
-        run: python tools/tests/test_public_target_safety.py
-
-      - name: Run doomrocket_reload_lifecycle regressions
-        run: python tools/tests/test_doomrocket_reload_lifecycle.py
-
-      - name: Run doomrocket_reposition_lifecycle regressions
-        run: python tools/tests/test_doomrocket_reposition_lifecycle.py
-
-      - name: Run doomrocket_action_lookup regressions
-        run: python tools/tests/test_doomrocket_action_lookup.py
-
-      - name: Run doomrocket_projectile_lifecycle regressions
-        run: python tools/tests/test_doomrocket_projectile_lifecycle.py
-
-      - name: Run doomrocket_sound_contract regressions
-        run: python tools/tests/test_doomrocket_sound_contract.py
-
-      - name: Run doomrocket_chimney_anchor regressions
-        run: python tools/tests/test_doomrocket_chimney_anchor.py
-
-      - name: Run doomrocket_backpack_smoke regressions
-        run: python tools/tests/test_doomrocket_backpack_smoke.py
-
-      - name: Run doomrocket_hose_assets regressions
+      - name: Run production hose skin and material contracts
         run: python tools/tests/test_doomrocket_hose_assets.py
 
-      - name: Run doomrocket_hose_dynamics regressions
+      - name: Run production semi-rigid hose physics and frame contracts
         run: python tools/tests/test_doomrocket_hose_dynamics.py
 
-      - name: Run doomrocket_hose_lifecycle regressions
+      - name: Run production hose native lifecycle contracts
         run: python tools/tests/test_doomrocket_hose_lifecycle.py
 
-      - name: Run doomrocket_hose_pose_adapter regressions
+      - name: Verify actual hose local-to-world bone writes
         run: python tools/tests/test_doomrocket_hose_pose_adapter.py
 
-      - name: Run visible locomotion regressions
-        run: python tools/tests/test_doomrocket_locomotion_animation.py
+      - name: Run measured weapon crystal anchor contracts
+        run: python tools/tests/test_doomrocket_crystal_anchor.py
 
-      - name: Run animation callback ownership regressions
-        run: python tools/tests/test_doomrocket_animation_callbacks.py
+      - name: Run crystal flame lifecycle tests
+        run: python tools/tests/test_doomrocket_crystal_flame.py
+
+      - name: Run asynchronous cosmetic package ownership tests
+        run: |
+          python tools/tests/test_doomrocket_effect_package.py
+          python tools/tests/test_doomrocket_child_material_prewarm.py
+
+      - name: Run native small-flame dependency guards
+        run: python tools/tests/test_crystal_flame_native_effect.py
+
+      - name: Run chimney anchor source and compiled contracts
+        run: python tools/tests/test_doomrocket_chimney_anchor.py
+
+      - name: Run backpack smoke lifecycle tests
+        run: python tools/tests/test_doomrocket_backpack_smoke.py
+
+      - name: Run native chain authoring lab tests (no SDK)
+        run: python tools/hose_lab/native_chain/test_native_chain.py
+
+      - name: Run isolated compiler path guards (no SDK)
+        run: python tools/hose_lab/test_compile_paths.py
+
+      - name: Run animator compiled-data rejection tests (no Blender or SDK)
+        run: python tools/animation_rig/verify_compiled_animation.py --self-test
+
+      - name: Run native pose capture staging guards (no SDK)
+        run: python tools/animation_rig/test_runtime_pose_probe.py
+
+      - name: Run compiled hose acceptance guard tests (no SDK)
+        run: python tools/hose_lab/compiled/test_verifier.py
+
+      - name: Run measured hose rig contract tests (no Blender)
+        run: python tools/hose_lab/rig/test_contract.py
+
+      - name: Run two-ended hose numerical tests (no engine)
+        run: python tools/hose_lab/solver/test_hose_xpbd.py
 
       - name: Run ragdoll regression tests
         shell: pwsh

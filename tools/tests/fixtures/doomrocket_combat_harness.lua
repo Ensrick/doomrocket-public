@@ -45,6 +45,7 @@ Quaternion.forward = Vector3.forward
 Quaternion.look = function() return {} end
 Quaternion.multiply = function() return {} end
 math.clamp = function(v, low, high) return math.max(low, math.min(high, v)) end
+math.round = function(v) return math.floor(v + 0.5) end
 Math = { random = function() return 0.5 end }
 
 unit = { alive = true, position = vector() }
@@ -144,16 +145,23 @@ Managers = { state = {
     debug = { drawer = function() return { reset = noop } end },
     difficulty = { get_difficulty_rank = function() return 1 end },
     unit_spawner = { spawn_network_unit = function()
-        if reject_spawn then error('spawn failed') end
         events.spawns = events.spawns + 1
         return {}, events.spawns
     end },
 } }
 Network = { peer_id = function() return 'server' end }
 AiAnimUtils = {
-    position_network_scale = function(v) return v end,
+    -- Match the native encode/decode boundary. Production launch and clearance
+    -- code use the decoded values, while render/physics remain outside this harness.
+    position_network_scale = function(v, sending)
+        if sending then return { math.round(v.x * 100), math.round(v.y * 100), math.round(v.z * 100) } end
+        return vector(v[1] * 0.01, v[2] * 0.01, v[3] * 0.01)
+    end,
     rotation_network_scale = function(v) return v end,
-    velocity_network_scale = function(v) return v end,
+    velocity_network_scale = function(v, sending)
+        if sending then return { math.round(v.x * 10), math.round(v.y * 10), math.round(v.z * 10) } end
+        return vector(v[1] * 0.1, v[2] * 0.1, v[3] * 0.1)
+    end,
 }
 LightWeightProjectiles = { test = { spread = 0, attack_power_level = {1}, impact_push_speed = 0 } }
 ProjectileRocket = { new = function() return {} end }
@@ -161,10 +169,6 @@ mod = {
     projectiles = {},
     network_send = function(_, name) table.insert(events.rpcs, name) end,
     _choose_warlock_combat_voice = function() return 1 end,
-    doomrocket_ballistics = { solve_launch_velocity = function()
-        if reject_solution then return nil end
-        return vector(0, 10, 1), 0.5
-    end },
 }
 function get_mod() return mod end
 

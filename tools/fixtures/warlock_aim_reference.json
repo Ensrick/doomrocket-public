@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "2a1c95d",
+  "expected_helper_translation": [
+    0.1,
+    5.0,
+    0.6
+  ],
+  "expected_compiled_local": [
+    0.001,
+    0.05,
+    0.006
+  ],
+  "reference_world_metres": [
+    0.1,
+    5.0,
+    0.6
+  ],
+  "compiled_parent": "root_point",
+  "compiled_ancestor_scale": 100,
+  "provenance": {
+    "native_bones": "units/beings/enemies/skaven_ratlinggunner/chr_skaven_ratlinggunner.bones",
+    "native_clip_directory": "_warlock_bombardier_art/ratling_anims",
+    "derivation": "Native compiled clips have constant root-relative aim_target authored position (0.1,5,0.6) metres. Preserve the existing custom helper rotation; replace only constant translation fields. Own compiled translation is 1/100 beneath the existing 100-scale wrapper. Non-helper digest masks only those fixed-size numeric values; every other byte is pinned."
+  },
+  "files": {
+    "combat_idle.fbx": {
+      "before_sha256": "72486e54fa6efc069815aa1dbdf7bf272ac2e962484d92ea9ce871274319817a",
+      "after_sha256": "63763fed076b81eafadfa2a5675705ee20cd6dea43e0c7747dffc8e1a91baf03",
+      "nonhelper_sha256": "45cdcfca7e62df86c6d6a7f4cf76dd79330068caf91493304cca1770a9404b6e",
+      "helper_rotation_sha256": "e4eb3e7d59d4ca2a1364f442c115b0114481e58ce5296aed05a0238040b8fd43",
+      "native_animation_sha256": "5a4f172f5d7eb86ffb949fd9eb32c97319d0b17428f5f0eec37d213fa0a4ae89",
+      "file_size": 3065276
+    },
+    "combat_reload_loop.fbx": {
+      "before_sha256": "c227517b3f33326020b56c70a5d4914e569e824bfcece7981263d1237d2ad3b0",
+      "after_sha256": "273885badf26e70aa0fbbc73363cdfe5fe572a2322eac907a729f7aecae4e76e",
+      "nonhelper_sha256": "4d85b689fcf16017dc15b7cff4c7ca08a3b546eb9debf329bc0cead8574e50bf",
+      "helper_rotation_sha256": "6079899b6639b42bb5be70531f26fa9aa114a46dce05c7899546d054b28040df",
+      "native_animation_sha256": "1f52749e04e142b27df4542bd94bb15cebb4152b3a809a9b6a5360487bbed840",
+      "file_size": 2995276
+    },
+    "combat_reload_start.fbx": {
+      "before_sha256": "6dc34a4fb3bf0fa7d1495878c7bc3818f943b2052bed95166279c046b66db6aa",
+      "after_sha256": "dc59322e1a9a4814b2816224a6edce908ceaa5021bb6cf9c69ac40a5669fdf0d",
+      "nonhelper_sha256": "5616cbfe65c7f9846994ae4e99de10c5ef75edd335b703aab40a3b5a463efb9f",
+      "helper_rotation_sha256": "05c0088d4a18972a7e6e4b6ed764dc28d85c5d568b319c5f6292203dec82c1a5",
+      "native_animation_sha256": "8d97a1c109b8f908755f23ec608a26a1064bb0ac3a97eae0c9fc64916c66bf3a",
+      "file_size": 2945644
+    },
+    "combat_run.fbx": {
+      "before_sha256": "19d4d6a07db69a4923dffb3a002f0470668bc729d39efc2e9aeb6741ee8ee4e5",
+      "after_sha256": "da2875eae58bcd8719fca4d4854b2fd2a3bfb2ab04efcdff0da5a87854f29125",
+      "nonhelper_sha256": "710063563d8bafc6241ed136d3b5feab70a136a7b121e8d7c2b4c86713672ac8",
+      "helper_rotation_sha256": "32ef9b873edee800fac09f99f61484a3cdb3ed9a984440ba018ca638b08c87f7",
+      "native_animation_sha256": "41bd087456e329656c86203113b8df9415e4215bc275be6b29dc43869770aaa5",
+      "file_size": 3024700
+    },
+    "combat_run_start_fwd.fbx": {
+      "before_sha256": "87818b903f819746c356a2df06ca2f260a38608fcb7be2e5646796384f982cf3",
+      "after_sha256": "d72f9342ff08d6a9d29311ba582e78c5d423994934d4e51e180c7e47939998bc",
+      "nonhelper_sha256": "96d4b1e4f9667032c4e893125c02b225c53fa063706983bda2f28aa1cdeff219",
+      "helper_rotation_sha256": "95de0e0fb65d305c1d078e812add0a7c76ddc1793bb4cc09c563ac7c7ac346b4",
+      "native_animation_sha256": "9927c6c17db15d7e1e17fd41c82deb61fe7db8503ef531e9e3bca12f2385f550",
+      "file_size": 2972716
+    },
+    "combat_shoot_loop.fbx": {
+      "before_sha256": "d5f923db5b4d799ab4329252f5b62eef30a126a2926732a5991cc0a3d18910ca",
+      "after_sha256": "2601ebb2a0bc836702dfde393647b0703e3840048aef589ee73d37fb65b0799e",
+      "nonhelper_sha256": "be1ebf28f9249891571f8a8b2653888feb24d10a267ce3f9bd7830fc8ece652b",
+      "helper_rotation_sha256": "6bdad7c5413143b1388dbc0d43e04919d32dd5a001e1b1afb88c65052e2a7d73",
+      "native_animation_sha256": "51a17802d75f8daf3f67fc604d0f1352cfc3eb5994db5db815ff897b33c3eb65",
+      "file_size": 3083932
+    },
+    "combat_shoot_start.fbx": {
+      "before_sha256": "e13d6771d1190f3c2107503e723ae1e7d87c185809ec9acb092c258b6e5ef5cc",
+      "after_sha256": "03b5b1a9d5ab8918228ac04eb82fa9548ccb4a0aa730e4e27d5d02b9a8838cb8",
+      "nonhelper_sha256": "c3b9062b2cf009dc3e41357e3f76139e904404c051c39a63e25ea0a1a1af8a01",
+      "helper_rotation_sha256": "6079899b6639b42bb5be70531f26fa9aa114a46dce05c7899546d054b28040df",
+      "native_animation_sha256": "28eea0de8dc99d57745b152cdb0b8fc407a6bf19ef3a380be53646ad3936732e",
+      "file_size": 2982156
+    },
+    "combat_walk.fbx": {
+      "before_sha256": "159beacbca8fde8c65a7e1f835be78f7060826ea2d3b53135e8ec6751b477cc2",
+      "after_sha256": "f5e3055f216497b7cc9af6420c1f4d48d5d9854fb92394a4aa59aa6377c4293e",
+      "nonhelper_sha256": "9ff24971d055c9c393ac931515b3d769364eb0f9fe9ba3eccc9965e40f612c63",
+      "helper_rotation_sha256": "6bdad7c5413143b1388dbc0d43e04919d32dd5a001e1b1afb88c65052e2a7d73",
+      "native_animation_sha256": "ae1613af4dd0570db13362384237533503b7b88ce6c3644d8c8e951c30837302",
+      "file_size": 3056988
+    },
+    "combat_wind_up_loop.fbx": {
+      "before_sha256": "06defc0c86333e67ef751aee5e15c0211dfbb81fa073416a8b3ecff2845d1640",
+      "after_sha256": "3dad72ca64470421a1a2763e11e12dbb7c3be1da93b3f0e93c7cfb25a630322a",
+      "nonhelper_sha256": "1840a002142e6c38382482d9d0aa84ad402f1dec73ca01ce5ae711209275ecfc",
+      "helper_rotation_sha256": "5b7b81d7d9969492d5e43e6018a74f334d458450fa1665a5dbbce0a3e265667d",
+      "native_animation_sha256": "55f0640c6670ff7a105d292cf9e966f1079723b1ffd682494008dd5cfe21d538",
+      "file_size": 3020668
+    },
+    "combat_wind_up_start.fbx": {
+      "before_sha256": "dd1be3c31d9a51ef2d5094605cee57d9d71a6a0663670582a632a9476d8aa8de",
+      "after_sha256": "88a6cf88f88c28f1531ab76d2858e7a5a9de06829e1619488952dbdd62a83cb0",
+      "nonhelper_sha256": "629996f29c56754812a1e46e7b53353665a4891adffecd536d06fdc8a60aee76",
+      "helper_rotation_sha256": "4634d84d287516566df513276d835fd97205647562fdd4556b8dd087647c1583",
+      "native_animation_sha256": "a53618266d996b2cdcb999f81c041d56a58c3dd0ea1848dfd28c4816752ed023",
+      "file_size": 2968652
+    },
+    "death_shot.fbx": {
+      "before_sha256": "e92284fd6885400220f698943051dd85345a7732a59100ff927c44e8d5232f69",
+      "after_sha256": "84e12bf715f9aee58eadaffc36ca260545ee68e7fcffde6087ef9157cd9add08",
+      "nonhelper_sha256": "27feec809725e82b566d221d17e694d89eac826226a44341b3db271fb7c6149a",
+      "helper_rotation_sha256": "67dc6a1ae2b3ccf0cce6d77984b7abb0047aa1774856900bf2d5bf6662546622",
+      "native_animation_sha256": "e0e91151dbffc6521ba7779de404a23f71540e7633a23a72533e3e3f7bb06154",
+      "file_size": 2971660
+    },
+    "stagger_bwd.fbx": {
+      "before_sha256": "cc68c36c2855ce2192f52e1a8c4d1caaa0717aca1df4a8a492c50d8108a044c8",
+      "after_sha256": "2f131537c72638de0c6a82f50965335804ce5651031516061e6cdbd7615ac385",
+      "nonhelper_sha256": "3a231c12a4c7307be9659b326a8831404d6d8f1f1da381444c08cbff15c7af47",
+      "helper_rotation_sha256": "319b873079a3164b0fefae3cdcc64c09c47c67627e19a1b4a764970e8bc006ef",
+      "native_animation_sha256": "a6f7e7253395469a67f11ad646342b396baa70bfa5ff69ad5508c400de29f805",
+      "file_size": 2961948
+    },
+    "stagger_fwd.fbx": {
+      "before_sha256": "0acec931b52de234b714beeb1d178eddd5f2e3ce3feba8186e97058da10a335f",
+      "after_sha256": "b03d0006a38eaf0b4368ded67a749c6f40ac701df36b0b0cbe035640ef03db80",
+      "nonhelper_sha256": "c89bf4a4f249b58e4e2de9e035ed8c67a1ba8afbf2d81df0b45344ae0c5ca344",
+      "helper_rotation_sha256": "4ea3a119ca9f6e5aa223dd687f62934b68be18111affc032cb51a76637431535",
+      "native_animation_sha256": "3f50c4a81be9632886852566434ad3f880030adc85bb4e4a5e3e650a97ee9359",
+      "file_size": 2963596
+    }
+  }
+}

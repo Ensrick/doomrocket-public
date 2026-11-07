@@ -1,59 +1,59 @@
 # Project status
 
-Updated 2026-10-11 UTC. GitHub Issues is the live backlog.
+Updated 2026-11-07 (America/Chicago). [GitHub Issues](https://github.com/Ensrick/doomrocket-public/issues)
+is the live backlog.
 
 | Question | Answer |
 | --- | --- |
-| Live public alpha | [v0.1.59-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), published and verified October 1 at 06:28 UTC |
-| Current public scope | Accepted crash, reload/shove/retreat, smoke, hose physics and functional audio fixes; [source, acceptance and publication evidence](docs/releases/v0.1.59-alpha.md). 96,315,457 bytes; content handle `5109085740045324862`. |
-| Published development TEST | [v0.1.85-dev](https://steamcommunity.com/sharedfiles/filedetails/?id=3794172730), verified 2026-10-11 01:13 UTC. 96,226,816 bytes; content handle `2896541613366277250`. [Release record](https://github.com/Ensrick/doomrocket-private/releases/tag/v0.1.85-dev); [reviewed source](https://github.com/Ensrick/doomrocket-private/commit/95388a6a05298ebf2ef08caae7b181a01aab7ca4). |
-| Ready TEST checks | Hose rest shape [#3](https://github.com/Ensrick/doomrocket-private/issues/3), near-range rocket clearance [#6](https://github.com/Ensrick/doomrocket-private/issues/6), crystal flame resizing [#15](https://github.com/Ensrick/doomrocket-private/issues/15), launcher/hand alignment [#28](https://github.com/Ensrick/doomrocket-private/issues/28), Dutch Spice arena waves [#35](https://github.com/Ensrick/doomrocket-private/issues/35), and lingering audio [#44](https://github.com/Ensrick/doomrocket-private/issues/44) are ready for solo verdicts on v0.1.85-dev. Publication does not establish their in-game acceptance. |
-| Accepted recent TEST work | Longer aim [#16](https://github.com/Ensrick/doomrocket-private/issues/16), portrait frame [#30](https://github.com/Ensrick/doomrocket-private/issues/30), and the five-change balance plan [#33](https://github.com/Ensrick/doomrocket-private/issues/33) are closed from Crunch's written results. Closure does not promote them to alpha. |
-| Remaining alpha evidence | [Crash #34](https://github.com/Ensrick/doomrocket-private/issues/34) still needs a crash-bearing log or GUID; [public #2](https://github.com/Ensrick/doomrocket-public/issues/2) is ready for a solo post-monitor corpse wake/cleanup check on v0.1.59-alpha. |
-| Blocked prerequisites | Full sound cues [#5](https://github.com/Ensrick/doomrocket-private/issues/5) need Arnaud's new masters. Public-alpha crash [#34](https://github.com/Ensrick/doomrocket-private/issues/34) needs a crash-bearing log or GUID and remains `needs-info`. |
+| Live public alpha | [v0.1.59-alpha](https://steamcommunity.com/sharedfiles/filedetails/?id=3771657344), last verified `2026-10-01T06:28:11.2425809Z`: 96,315,457 bytes; content handle `5109085740045324862`. [Original record](docs/releases/v0.1.59-alpha.md). |
+| Current preparation | Broker-allocated **v0.1.60-alpha is in preparation and is not yet published**. The maintainer authorized promotion of the improved tested default runtime on November 7. [Selected scope and evidence](docs/releases/v0.1.60-alpha.md). |
+| Selected development source | [TEST v0.1.98-dev](https://github.com/Ensrick/doomrocket-private/releases/tag/v0.1.98-dev), reviewed source [`e865b41`](https://github.com/Ensrick/doomrocket-private/commit/e865b41768348e980e0b1cb80f0e5c68b0c397c6). Verified `2026-11-06T04:43:23.0702456Z`: TEST item 3794172730, 96,189,752 bytes; content handle `4811280844651333429`. |
+| Latest written feedback | Crunch says [vaulting looks much more convincing](https://github.com/Ensrick/doomrocket-private/issues/53#issuecomment-6703671499). His matching log loads v0.1.98-dev. He would like [a stronger hose W shape](https://github.com/Ensrick/doomrocket-private/issues/3#issuecomment-6704081003); the accepted sway settings are retained. |
+| Acceptance already recorded | Flame colour/size [#15](https://github.com/Ensrick/doomrocket-private/issues/15#issuecomment-6624849555), ordinary-spawn crash fix [#65](https://github.com/Ensrick/doomrocket-private/issues/65), longer aim [#16](https://github.com/Ensrick/doomrocket-private/issues/16), portrait frame [#30](https://github.com/Ensrick/doomrocket-private/issues/30), and balance plan [#33](https://github.com/Ensrick/doomrocket-private/issues/33). Accepted checks need no repeated demonstration. |
+| Separate unresolved work | W-strength preference [#3](https://github.com/Ensrick/doomrocket-private/issues/3), first-spawn hitch verdict [#69](https://github.com/Ensrick/doomrocket-private/issues/69), clearance [#6](https://github.com/Ensrick/doomrocket-private/issues/6), grip [#28](https://github.com/Ensrick/doomrocket-private/issues/28), arena compatibility [#35](https://github.com/Ensrick/doomrocket-private/issues/35), rare lingering audio [#44](https://github.com/Ensrick/doomrocket-private/issues/44), and facing [#55](https://github.com/Ensrick/doomrocket-private/issues/55) retain their recorded scope. Promotion does not close them. |
+| Asset and evidence prerequisites | Full sound pass [#5](https://github.com/Ensrick/doomrocket-private/issues/5) needs Arnaud's source takes/trigger choices; head art [#56](https://github.com/Ensrick/doomrocket-private/issues/56) remains an artist decision. Alpha crash [#34](https://github.com/Ensrick/doomrocket-private/issues/34) still lacks a crash-bearing alpha log/GUID. Broader custom-export, localized-outfit and native-oracle acceptance in [#53](https://github.com/Ensrick/doomrocket-private/issues/53) remains separate. |
 
-The v0.1.59 promotion retains the public Ratling health/armor, projectile
-trajectory and aiming timing. The firmer TEST hose spring, ballistic aiming,
-visible spine aim constraint and grip diagnostics remain excluded from alpha.
-Known fence/vault motion and hose collision limits remain documented in the
-release record. No later TEST candidate is an implicit alpha promotion.
+## Promotion scope and verification
 
-Crunch accepted the v0.1.84 balance plan, including prompt rocket impacts and
-the flailing airborne throw with movable camera. His latest wider playtest
-report says players are satisfied with the knockback. Occasional terrain
-bouncing remains recorded; report a reproducible recurrence normally rather
-than keeping the completed balance plan open indefinitely.
+The alpha60 candidate deliberately ports the tested default runtime and required
+resources from TEST98: hose shape/physics, legacy traversal and presentation,
+guarded aiming and rocket behavior, approved balance and portrait work,
+flame/smoke/material loading, compatibility and audio lifecycle fixes. It adds
+no new tuning, production models, animation clips or audio masters. The public
+item, thumbnail, title shape, channel guards and canonical VMB adapter remain
+on the public line. TEST publication is unchanged.
 
-The v0.1.84 crystal fire is visible, but Crunch reports that changing its size
-command produces no visible difference. He suggested trying a torch flame.
-The published v0.1.85 TEST build changes the scaling path; it still needs a
-written visual verdict. His new #44 report describes living-enemy sounds
-occasionally continuing after death; that observation is accepted and the
-published TEST cleanup requires a fresh result. No fixed claim follows from offline
-tests alone.
+The default authored manifest stays empty, the shipping body has no custom
+profile marker, and rehearsal is disabled until explicitly selected. Supporting
+inert resources do not activate artist profiles, localized skins or a custom
+animation export. Existing tracks and custom-pose ownership remain protected.
 
-TEST v0.1.80-dev stopped re-running vanilla breed/pickup settings, which had
-overwritten Dutch Spice's Into the Nest arena-wave hook. That change is
-retained in v0.1.85-dev, but the arena-wave verdict remains outstanding under
-#35 and the fix has not been promoted to public alpha. The separate Legend
-loading crash names Dutch Spice's misspelled `skaven_storm_vzermin` breed;
-it requires a Dutch Spice correction and does not establish failure of the
-Warlock compatibility candidate.
+The thirteen original animation source FBXs include the already-tested constant
+`aim_target` helper translation relative to alpha59. Non-helper tracks and helper
+rotations must remain preserved; whole-file identity against alpha59 is not
+claimed. The final candidate must match tested TEST98 source/resource bytes
+apart from channel/version metadata and retain the public publication boundary.
 
-#34's original attachment loads v0.1.56-alpha, has no `<<Script Error>>` block,
-and ends normally. Neither the old accepted crash closures nor a successful
-upload resolve that unlocated `entity_damage` crash report.
+Clean SDK compilation, the material/FX splice, full pipeline, committed schema-3
+receipt, hosted PR/exact-default QA and canonical VMB publication are pending.
+Only fresh item-specific native start/outcome/finish-OK evidence plus matching
+Steam metadata can advance the live public row. Historical tags and receipts
+retain their original source commits.
 
-`ready-for-testing` and `testing` identify a verified build and its pending
-in-game verdict. `blocked` names an engineering, publication, source-asset or
-diagnostic-evidence prerequisite. Missing source assets and crash evidence are
-real blockers; they are not invitations to repeat unrelated tests.
+The game is absent on the publishing machine. The maintainer's publication-only
+exception applies; no local/remote deployment or new local game launch is
+claimed. Crunch's TEST98 report and the maintainer's promotion approval are the
+runtime acceptance evidence for this port. Visual refinements and separate open
+issues remain recorded rather than being inferred from offline tests.
 
-The v0.1.85 TEST tag stays bound to reviewed source `95388a6a05298ebf2ef08caae7b181a01aab7ca4`. Public
-alpha remains v0.1.59-alpha with its original source tag and publication receipt.
-No TEST change is claimed as an alpha promotion.
+## Reporting and channel boundaries
 
-Use the [canonical VMB/Tweaker method](docs/RELEASE_CHANNELS.md). The game is
-not installed: publication only, with no deployment claim. Keep exactly one
-channel enabled. A solo written observation and matching log suffice; no video,
-second player, or arranged multiplayer session is a standing test requirement.
+Use the [public issue chooser](https://github.com/Ensrick/doomrocket-public/issues/new/choose)
+for the installed alpha and the [development tracker](https://github.com/Ensrick/doomrocket-private/issues)
+for TEST work. Enable exactly one Workshop channel and report the actual loaded
+banner. Written observations and a matching log suffice; no video, second
+player or arranged lobby is a standing requirement. Follow each issue's current
+instructions and preserve accepted observations after later releases.
+
+See the [promotion record](docs/releases/v0.1.60-alpha.md) and
+[canonical release method](docs/RELEASE_CHANNELS.md).

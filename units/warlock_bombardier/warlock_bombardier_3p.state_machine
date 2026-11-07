@@ -25,6 +25,7 @@ layers = [
                 ]
                 loop_animation = true
                 name = "base/idle"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "1"
@@ -139,6 +140,7 @@ layers = [
                 ]
                 loop_animation = true
                 name = "base/walk"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "warlock_move_speed / 1.9"
@@ -253,6 +255,7 @@ layers = [
                 ]
                 loop_animation = true
                 name = "base/run"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "warlock_move_speed / 4"
@@ -367,6 +370,7 @@ layers = [
                 ]
                 loop_animation = false
                 name = "base/shoot_start"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "1"
@@ -481,6 +485,7 @@ layers = [
                 ]
                 loop_animation = true
                 name = "base/shoot_loop"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "1"
@@ -595,6 +600,7 @@ layers = [
                 ]
                 loop_animation = false
                 name = "base/wind_up_start"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "1"
@@ -709,6 +715,7 @@ layers = [
                 ]
                 loop_animation = true
                 name = "base/wind_up_loop"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "1"
@@ -823,6 +830,7 @@ layers = [
                 ]
                 loop_animation = false
                 name = "base/reload_start"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "1"
@@ -937,6 +945,7 @@ layers = [
                 ]
                 loop_animation = true
                 name = "base/reload_loop"
+                constraints = [ "warlock_aim" ]
                 randomization_type = "every_loop"
                 root_driving = "ignore"
                 speed = "1"
@@ -1296,3 +1305,17 @@ variables = {
     warlock_move_speed = 0
 }
 bones = "units/warlock_bombardier/warlock_bombardier_3p"
+blend_sets = {
+    warlock_aim = { j_spine = "0.5" j_spine1 = "1.0" }
+}
+constraint_targets = {
+    aim_target = { test_position = [ -1 2 0 ] }
+}
+constraints = {
+    warlock_aim = {
+        type = "aim"
+        blend_set = "warlock_aim"
+        target = "aim_target"
+        bone = "aim_target"
+    }
+}

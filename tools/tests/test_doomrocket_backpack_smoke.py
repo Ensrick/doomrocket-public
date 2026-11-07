@@ -22,6 +22,7 @@ from lupa.lua51 import LuaRuntime
 ROOT = Path(__file__).resolve().parents[2]
 MODULE = ROOT / "scripts/mods/doomrocket/extensions/doomrocket_backpack_smoke.lua"
 ANCHOR = ROOT / "scripts/mods/doomrocket/utils/doomrocket_chimney_anchor.lua"
+PACKAGE_HELPER = ROOT / "scripts/mods/doomrocket/utils/doomrocket_effect_package.lua"
 BOOTSTRAP = ROOT / "scripts/mods/doomrocket/doomrocket.lua"
 HOOKS = ROOT / "scripts/mods/doomrocket/utils/hooks.lua"
 DEATH_REACTIONS = ROOT / "scripts/mods/doomrocket/extensions/death_reactions.lua"
@@ -64,10 +65,17 @@ function pm:has_loaded(name,reference)
  assert(name==package_name)
  return loaded and (not reference or refs[reference] ~= nil)
 end
+function pm:reference_count(name,reference)
+ assert(name==package_name); return refs[reference] or 0
+end
+function pm:is_loading(name,reference)
+ assert(name==package_name); return not loaded and refs[reference] ~= nil
+end
 function pm:load(name,reference,callback,asynchronous)
  assert(name==package_name and reference==package_reference)
- assert(callback==nil and asynchronous==nil,'must load synchronously')
- refs[reference]=(refs[reference] or 0)+1; loaded=true; events.loads=events.loads+1
+ if not asynchronous then events.sync_loads=(events.sync_loads or 0)+1 end
+ assert(callback==nil and asynchronous==true,'cosmetic package must load asynchronously')
+ refs[reference]=(refs[reference] or 0)+1; loaded=not defer_loading; events.loads=events.loads+1
 end
 function pm:unload(name,reference)
  assert(name==package_name and reference==package_reference)
@@ -116,13 +124,26 @@ ScriptWorld={create_particles_linked=function(w,name,u,node,policy,pose)
  World.link_particles(w,id,u,node,pose or Matrix4x4.identity(),policy)
  return id
 end}
-mod={}; function get_mod(name) assert(name=='doomrocket'); return mod end
+mod={_warlock_outfit_owners={}}; function get_mod(name) assert(name=='doomrocket'); return mod end
 function mod:pcall(fn,...)
  local ok,result=pcall(fn,...);if not ok then self.last_error=result end;return ok,result
 end
 -- Isolate smoke assertions while executing shared production lifecycle hooks.
 -- Actual hose ownership/native boundary behavior is exercised independently in
 -- test_doomrocket_hose_lifecycle.py; these are not mocked smoke operations.
+-- The new animation/outfit modules likewise have their own executable suites.
+mod._start_warlock_animation_ownership=function() end
+mod._stop_warlock_animation_ownership=function() end
+mod._reset_warlock_animation_ownership=function() end
+mod._release_warlock_animation_ownership_world=function() end
+mod._update_warlock_animation_ownership=function() end
+mod._update_warlock_animation_blend=function() end
+mod._note_warlock_animation_ownership_event=function() end
+mod._start_warlock_outfit_correction=function() end
+mod._stop_warlock_outfit_correction=function() end
+mod._reset_warlock_outfit_correction=function() end
+mod._release_warlock_outfit_correction_world=function() end
+mod._handoff_warlock_outfit_correction=function() end
 mod._start_warlock_hose=function() end
 mod._stop_warlock_hose=function() end
 mod._stop_warlock_hose_item=function() end
@@ -144,8 +165,34 @@ mod._stop_warlock_weapon_pose_probe=function() end
 mod._stop_warlock_weapon_pose_probe_item=function() end
 mod._queue_warlock_weapon_pose_probe=function() end
 mod._reset_warlock_weapon_pose_probe=function() end
+-- Independent animation diagnostics/selection have dedicated executable suites.
+-- Keep the production smoke reset and its lifetime assertions real here.
+mod._reset_warlock_animation_probe=function() end
+mod._reset_warlock_animation_rehearsal=function() end
 mod._release_warlock_weapon_pose_probe_world=function() end
 mod._note_warlock_weapon_pose_event=function() end
+-- Living grip transfer has its own strict hierarchy/lifetime suite.
+mod._start_warlock_grip_alignment=function() end
+mod._stop_warlock_grip_alignment=function() end
+mod._stop_warlock_grip_alignment_item=function() end
+mod._resume_warlock_grip_alignment_item=function() end
+mod._reset_warlock_grip_alignment=function() end
+mod._release_warlock_grip_alignment_world=function() end
+mod._note_warlock_grip_alignment_event=function() end
+mod._queue_warlock_grip_alignment=function() end
+-- Audio ownership/teardown is exercised by the dedicated audio lifecycle suite.
+mod._stop_warlock_living_sounds=function() end
+mod._forget_warlock_audio_owner=function() end
+mod._release_warlock_audio_world=function() end
+-- The crystal flame has its own executable lifecycle suite.
+mod._start_warlock_crystal_flame=function() end
+mod._stop_warlock_crystal_flame=function() end
+mod._stop_warlock_crystal_flame_item=function() end
+mod._update_warlock_crystal_flame=function() end
+mod._prewarm_warlock_crystal_flame=function() end
+mod._prewarm_warlock_child_materials=function() end
+mod._reset_warlock_crystal_flame=function() end
+mod._release_warlock_crystal_flame_world=function() end
 function start(o,u) return mod._start_warlock_backpack_smoke(o or owner,u or outfit) end
 function stop(reason) return mod._stop_warlock_backpack_smoke(owner,reason) end
 function reset(reason) mod._reset_warlock_backpack_smoke(reason) end
@@ -170,6 +217,7 @@ class BackpackSmokeTests(unittest.TestCase):
     def setUp(self):
         self.lua = LuaRuntime(unpack_returned_tuples=True)
         self.lua.execute(HARNESS)
+        self.lua.globals().mod._warlock_effect_package = self.lua.execute(PACKAGE_HELPER.read_text(encoding="utf-8"))
         self.lua.globals().mod._doomrocket_chimney_anchor = self.lua.execute(ANCHOR.read_text(encoding="utf-8"))
         self.source = MODULE.read_text(encoding="utf-8")
         self.lua.execute(self.source)
@@ -371,7 +419,7 @@ class BackpackSmokeRootIntegrationTests(unittest.TestCase):
 
     def load_runtime_callbacks(self):
         self.lua.execute(self.extract_one(
-            BOOTSTRAP, r'^mod\.anim_emitters = \{\}.*?(?=^mod:dofile\("scripts/settings/breeds"\))'))
+            BOOTSTRAP, r'^mod\.anim_emitters = \{\}.*?(?=^mod\.doom = true)'))
 
     def load_death_preparation(self):
         self.lua.execute("""
@@ -507,8 +555,10 @@ class BackpackSmokeRootIntegrationTests(unittest.TestCase):
                 self.lua.globals().expected_reason = reason
                 self.lua.globals().expected_unload = unload
                 self.lua.execute("""
+                    mod._reset_warlock_traversal_pose=function() events.traversal_reset=true end
                     mod._shutdown_doomrocket_audio=function(reason,unload)
                         assert(reason==expected_reason and unload==expected_unload)
+                        assert(events.traversal_reset)
                         assert(record_count()==0 and events.destroyed==1 and events.unloads==1)
                         events.audio_reset=true
                     end

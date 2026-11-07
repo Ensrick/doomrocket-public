@@ -1,0 +1,4 @@
+// Loaded asynchronously only after native pickups materials are resident.
+particles = [
+    "fx/doomrocket/crystal_torch_green_small"
+]
